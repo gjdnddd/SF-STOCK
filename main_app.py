@@ -29,12 +29,13 @@ st.markdown("""
     .content-box {
         white-space: pre-wrap !important;
         word-break: break-all !important;
-        line-height: 1.5 !important;
+        line-height: 1.6 !important;
         background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 8px;
+        padding: 20px;
+        border-radius: 10px;
         border: 1px solid #e9ecef;
         color: #333;
+        font-size: 15px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -53,22 +54,21 @@ def get_sort_value(text, keyword):
 @st.cache_data
 def load_data():
     if os.path.exists("data.xlsx"):
-        # 엑셀 로드 시 가격 등 정보가 있다면 규칙에 따라 처리 가능
+        # 엑셀 파일 로드
         return pd.read_excel("data.xlsx")
     return None
 
 df = load_data()
 
 if df is not None:
-    # 세션 상태 관리
+    # 세션 상태 초기화
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'search_keyword' not in st.session_state: st.session_state.search_keyword = ""
     if 'page_view' not in st.session_state: st.session_state.page_view = "filter"
 
-    # --- 사이드바 영역 (열고 닫기 가능) ---
+    # --- 사이드바 영역 ---
     with st.sidebar:
         st.title("💎 메뉴 설정")
-        # 사이드바에서 직접 메뉴 변경 시 세션 상태 동기화
         menu_choice = st.radio(
             "기능 선택", 
             ["🔎 전체 테마 필터", "📈 종목 상세 분석"], 
@@ -80,7 +80,7 @@ if df is not None:
             st.session_state.page_view = "detail"
         
         st.divider()
-        st.caption("왼쪽 상단의 '>' 버튼으로 사이드바를 닫아 화면을 넓게 쓰세요.")
+        st.caption("사이드바를 접어 화면을 넓게 활용하세요.")
 
     # 1. [🔎 전체 테마 필터 화면]
     if st.session_state.page_view == "filter":
@@ -100,7 +100,6 @@ if df is not None:
                 
                 st.success(f"'{keyword}' 검색 결과: {len(res)}건")
                 
-                # 상세분석 종목 선택 시 자동 이동 (on_change 사용)
                 def move_to_detail():
                     if st.session_state.stock_selector != "선택 안함":
                         st.session_state.selected_stock = st.session_state.stock_selector
@@ -119,11 +118,9 @@ if df is not None:
 
     # 2. [📈 종목 상세 분석 화면]
     elif st.session_state.page_view == "detail":
-        # 상단 조작바 (검색창 + 필터화면 버튼)
         header_col1, header_col2 = st.columns([8, 2])
         
         with header_col1:
-            # 검색창만 깔끔하게 표시
             new_query = st.text_input("종목명 입력", value=st.session_state.selected_stock, label_visibility="collapsed", placeholder="분석할 종목명을 입력하세요")
             if new_query != st.session_state.selected_stock:
                 st.session_state.selected_stock = new_query
@@ -138,26 +135,40 @@ if df is not None:
 
         if st.session_state.selected_stock:
             detail_res = df[df['종목명'].astype(str).str.contains(st.session_state.selected_stock, na=False, case=False)]
+            
             if not detail_res.empty:
                 row = detail_res.iloc[0]
                 st.subheader(f"🔍 {row['종목명']} 상세 분석")
                 
-                tabs = st.tabs(["📰 기사", "🎯 코어테마", "🥇 대장이력", "💡 키워드요약", "🌐 전체테마", "📝 상세내용", "📊 K스윙"])
+                # 탭 구성: '상세내용'을 '기사본문'으로 변경
+                tab_titles = ["📰 기사", "🎯 코어테마", "🥇 대장이력", "💡 키워드요약", "🌐 전체테마", "📝 기사본문", "📊 K스윙"]
+                tabs = st.tabs(tab_titles)
                 
-                with tabs[0]: 
-                    content = str(row.get("기사", "데이터 없음")).replace("_x000D_", "\n").replace("\r", "")
-                    content = re.sub(r'\n\s*\n', '\n', content).strip() 
-                    st.markdown(f'<div class="content-box">{content}</div>', unsafe_allow_html=True)
-                
-                # 공통 디자인 적용
-                tab_fields = ["코어테마", "대장이력", "키워드요약", "전체테마", "더 긴 설명", "K스윙 정리"]
-                for i, field in enumerate(tab_fields, 1):
+                # 탭별 인덱스와 엑셀 컬럼명 매핑
+                mapping = {
+                    0: "기사",
+                    1: "코어테마",
+                    2: "대장이력",
+                    3: "키워드요약",
+                    4: "전체테마",
+                    5: "기사본문", # 엑셀의 '기사본문' 컬럼 데이터 출력
+                    6: "K스윙 정리"
+                }
+
+                for i, col_name in mapping.items():
                     with tabs[i]:
-                        val = row.get(field, "정보 없음")
-                        if field == "키워드요약": st.success(val)
-                        else: st.markdown(f'<div class="content-box">{val}</div>', unsafe_allow_html=True)
+                        val = row.get(col_name, "정보 없음")
+                        
+                        # 데이터 정제 (엑셀 특수 줄바꿈 기호 처리)
+                        content = str(val).replace("_x000D_", "\n").replace("\r", "")
+                        content = re.sub(r'\n\s*\n', '\n', content).strip()
+                        
+                        if col_name == "키워드요약":
+                            st.success(content)
+                        else:
+                            st.markdown(f'<div class="content-box">{content}</div>', unsafe_allow_html=True)
             else:
                 st.warning("일치하는 종목이 없습니다.")
 
 else:
-    st.error("data.xlsx 파일을 찾을 수 없습니다.")
+    st.error("data.xlsx 파일을 찾을 수 없습니다. 파일명을 확인해 주세요.")
