@@ -49,24 +49,18 @@ def load_all_data():
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # 세션 상태 초기화
+    # 세션 상태 초기화 (매우 중요)
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
 
-    # --- [수정] 테마 검색 엔진: 입력어 0순위 고정 ---
+    # --- 검색 엔진 ---
     def search_theme(search_term):
         if not search_term: return []
         search_term_lower = search_term.lower()
         is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_term)
-        
-        # 리스트 필터링
         matches = [t for t in unique_themes if (search_term in get_chosung(t) if is_chosung else search_term_lower in t.lower())]
-        
-        # 사용자가 입력한 단어가 리스트에 있든 없든 0순위로 강제 삽입 (엔터 시 우선 선택)
-        if search_term in matches:
-            matches.remove(search_term)
+        if search_term in matches: matches.remove(search_term)
         matches.insert(0, search_term)
-        
         return matches[:20]
 
     def search_stock(search_term):
@@ -81,22 +75,23 @@ if df is not None:
             contains = [s for s in all_stocks if search_term.lower() in s.lower() and not s.lower().startswith(search_term.lower())]
         return (starts + contains)[:15]
 
-    # --- 사이드바 메뉴 ---
-    st.session_state.menu_option = st.sidebar.radio("메뉴 선택", ["🔎 테마 필터", "📈 종목 상세 분석"], index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
+    # --- 사이드바 메뉴 (상태와 연동) ---
+    menu_list = ["🔎 테마 필터", "📈 종목 상세 분석"]
+    current_idx = menu_list.index(st.session_state.menu_option)
+    st.session_state.menu_option = st.sidebar.radio("메뉴 선택", menu_list, index=current_idx)
 
     # 1. 테마 필터 화면
     if st.session_state.menu_option == "🔎 테마 필터":
         st.title("🔎 테마별 종목 정렬 필터")
         
-        # [수정] 포커스 유지를 위해 container 사용 및 전역 키 할당
-        theme_container = st.container()
-        with theme_container:
-            selected_theme = st_searchbox(
-                search_theme, 
-                key="theme_search_box_unique", 
-                placeholder="테마명 입력 후 엔터",
-                edit_after_submit=True
-            )
+        # 포커스 이탈 방지 옵션 강화
+        selected_theme = st_searchbox(
+            search_theme, 
+            key="theme_search_box", 
+            placeholder="테마명 입력 후 엔터",
+            edit_after_submit=True,
+            clear_on_submit=False # 입력값 유지하여 백스페이스 시 튕김 완화
+        )
 
         if selected_theme:
             res = df[df['코어테마'].astype(str).str.contains(selected_theme, na=False, case=False)].copy()
@@ -104,14 +99,16 @@ if df is not None:
                 res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_theme))
                 res = res.sort_values(by='sort_key', ascending=False)
                 
+                # 버튼/선택창 영역
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    target = st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), label_visibility="collapsed")
+                    target = st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), key="target_select")
                 with col2:
+                    st.write("") # 간격 조정
                     if st.button("📈 상세페이지로 이동") and target != "선택 안함":
                         st.session_state.selected_stock = target
                         st.session_state.menu_option = "📈 종목 상세 분석"
-                        st.rerun()
+                        st.rerun() # 페이지 강제 전환
                 
                 st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
 
@@ -124,22 +121,26 @@ if df is not None:
 
         selected_stock = st_searchbox(
             search_stock, 
-            key="stock_search_box_unique", 
+            key="stock_search_box", 
             default=st.session_state.selected_stock,
             edit_after_submit=True
         )
 
         if selected_stock:
             st.session_state.selected_stock = selected_stock
-            row = df[df['종목명'].astype(str) == selected_stock].iloc[0]
-            st.subheader(f"🔍 {selected_stock} 분석 리포트")
+            stock_row = df[df['종목명'].astype(str) == selected_stock]
             
-            tabs = st.tabs(["📰 기사", "🎯 코어테마", "🥇 대장이력", "💡 키워드요약", "🌐 전체테마", "📝 기사본문", "📊 K스윙"])
-            mapping = {0:"기사", 1:"코어테마", 2:"대장이력", 3:"키워드요약", 4:"전체테마", 5:"기사본문", 6:"K스윙 정리"}
-            
-            for i, col_name in mapping.items():
-                with tabs[i]:
-                    content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
-                    st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #e9ecef; color:#333;">{content}</div>', unsafe_allow_html=True)
+            if not stock_row.empty:
+                row = stock_row.iloc[0]
+                st.subheader(f"🔍 {selected_stock} 분석 리포트")
+                tabs = st.tabs(["📰 기사", "🎯 코어테마", "🥇 대장이력", "💡 키워드요약", "🌐 전체테마", "📝 기사본문", "📊 K스윙"])
+                mapping = {0:"기사", 1:"코어테마", 2:"대장이력", 3:"키워드요약", 4:"전체테마", 5:"기사본문", 6:"K스윙 정리"}
+                
+                for i, col_name in mapping.items():
+                    with tabs[i]:
+                        content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
+                        st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #e9ecef; color:#333; font-size:16px;">{content}</div>', unsafe_allow_html=True)
+            else:
+                st.warning("엑셀 데이터에서 해당 종목을 찾을 수 없습니다.")
 else:
     st.error("data.xlsx 파일을 찾을 수 없습니다.")
