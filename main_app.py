@@ -3,7 +3,7 @@ import pandas as pd
 import re
 import os
 
-# 1. 페이지 설정 및 전체 글자 크기 CSS 주입
+# 1. 페이지 설정 및 스타일 주입
 st.set_page_config(page_title="주식 통합 분석 시스템", layout="wide")
 
 st.markdown("""
@@ -12,36 +12,18 @@ st.markdown("""
     h1 { font-size: 20px !important; font-weight: bold !important; }
     h2, h3 { font-size: 18px !important; font-weight: bold !important; }
     .stTable td, .stTable th { font-size: 15px !important; }
-    button[data-baseweb="tab"] div { font-size: 16px !important; }
-    section[data-testid="stSidebar"] .stRadio div { font-size: 16px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 유틸리티 함수 ---
-def get_chosung(text):
-    CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
-    result = ""
-    for char in str(text):
-        if '가' <= char <= '힣':
-            char_code = ord(char) - ord('가')
-            result += CHOSUNG_LIST[char_code // 588]
-        else: result += char.lower()
-    return result
-
-def get_sort_value(text, keyword):
-    if pd.isna(text) or not keyword: return (0, 0)
-    pattern = re.escape(keyword) + r'(\d+)-?(\d*)'
-    match = re.search(pattern, str(text).replace(" ", ""), re.IGNORECASE)
-    if match:
-        main = int(match.group(1))
-        sub = int(match.group(2)) if match.group(2) else 0
-        return (main, sub)
-    return (0, 0)
-
-# --- 버튼 클릭 콜백 함수 (이동 문제 해결의 핵심) ---
-def move_to_detail():
+# --- 상태 관리 콜백 함수 ---
+def update_target_stock():
+    """종목 선택 즉시 세션에 저장 (리셋 방지)"""
     if st.session_state.target_select != "선택 안함":
         st.session_state.selected_stock = st.session_state.target_select
+
+def move_to_detail():
+    """버튼 클릭 시 상세 페이지로 강제 전환"""
+    if st.session_state.selected_stock:
         st.session_state.menu_option = "📈 종목 상세 분석"
 
 # --- 데이터 로드 ---
@@ -63,7 +45,7 @@ def load_all_data():
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # 세션 상태 초기화
+    # 세션 초기화
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'saved_search_input' not in st.session_state: st.session_state.saved_search_input = ""
@@ -83,41 +65,57 @@ if df is not None:
     if st.session_state.menu_option == "🔎 테마 필터":
         st.title("🔎 테마 상세 필터")
         
-        search_columns = st.multiselect("검색 범위를 선택하세요", 
+        # 범위 선택
+        search_columns = st.multiselect("검색 범위", 
             ["코어테마", "전체테마", "기사", "대장이력", "키워드요약", "기사본문", "K스윙 정리"],
             default=st.session_state.saved_search_cols)
         st.session_state.saved_search_cols = search_columns
         
-        search_input = st.text_input("검색어 입력", value=st.session_state.saved_search_input, key="theme_input")
+        # 검색어
+        search_input = st.text_input("검색어", value=st.session_state.saved_search_input, key="theme_input")
         st.session_state.saved_search_input = search_input
         
         if search_input and search_columns:
+            # 추천 검색어 로직
+            import re
+            def get_chosung(text):
+                CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+                res = ""
+                for char in str(text):
+                    if '가' <= char <= '힣': res += CHOSUNG_LIST[(ord(char) - ord('가')) // 588]
+                    else: res += char.lower()
+                return res
+
             is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_input)
             filtered_themes = [t for t in unique_themes if (search_input in get_chosung(t) if is_chosung else search_input.lower() in t.lower())]
             if search_input not in filtered_themes: filtered_themes.insert(0, search_input)
             
+            # 확정 키워드 선택
             try: def_idx = filtered_themes.index(st.session_state.saved_selected_keyword) if st.session_state.saved_selected_keyword in filtered_themes else 0
             except: def_idx = 0
-                
             selected_keyword = st.selectbox("확정 검색어 선택", filtered_themes, index=def_idx, key="theme_select")
             st.session_state.saved_selected_keyword = selected_keyword
             
             if selected_keyword:
-                conditions = [df[col].astype(str).str.contains(selected_keyword, na=False, case=False) for col in search_columns]
-                res = df[pd.concat(conditions, axis=1).any(axis=1)].copy()
+                cond = [df[col].astype(str).str.contains(selected_keyword, na=False, case=False) for col in search_columns]
+                res = df[pd.concat(cond, axis=1).any(axis=1)].copy()
                 
                 if not res.empty:
-                    res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_keyword))
+                    # 정렬
+                    def sort_v(text, kw):
+                        m = re.search(re.escape(kw) + r'(\d+)', str(text).replace(" ", ""))
+                        return int(m.group(1)) if m else 0
+                    res['sort_key'] = res['코어테마'].apply(lambda x: sort_v(x, selected_keyword))
                     res = res.sort_values(by='sort_key', ascending=False)
                     
                     st.divider()
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        # 종목 선택 시 바로 상세 페이지에 반영되도록 설정
-                        st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), key="target_select")
+                        # [해결] on_change를 사용하여 선택 즉시 세션에 고정
+                        st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), 
+                                     key="target_select", on_change=update_target_stock)
                     with col2:
-                        st.write(" ") # 수직 정렬용
-                        # [해결] 콜백 함수(on_click)를 사용하여 버튼 작동 보장
+                        st.write(" ")
                         st.button("📈 상세페이지 이동", on_click=move_to_detail, use_container_width=True)
 
                     st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
@@ -130,8 +128,13 @@ if df is not None:
             st.rerun()
 
         all_stocks = df['종목명'].astype(str).tolist()
-        default_idx = all_stocks.index(st.session_state.selected_stock) if st.session_state.selected_stock in all_stocks else 0
-        selected_stock = st.selectbox("종목 선택", all_stocks, index=default_idx)
+        # 선택된 종목이 있으면 그 종목을 기본값으로, 없으면 첫 번째 종목
+        try:
+            default_idx = all_stocks.index(st.session_state.selected_stock)
+        except:
+            default_idx = 0
+            
+        selected_stock = st.selectbox("종목 선택", all_stocks, index=default_idx, key="detail_stock_select")
 
         if selected_stock:
             st.session_state.selected_stock = selected_stock
