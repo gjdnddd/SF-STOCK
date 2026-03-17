@@ -48,66 +48,81 @@ def load_all_data():
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # 세션 상태 강제 동기화
+    # 세션 상태 관리
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
 
     # 사이드바
     st.sidebar.title("💎 주식 분석")
-    st.session_state.menu_option = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
+    st.session_state.menu_option = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], 
+                                                   index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
 
     # 1. 테마 필터 화면
     if st.session_state.menu_option == "🔎 테마 필터":
-        st.title("🔎 테마별 종목 정렬 필터")
+        st.title("🔎 테마 상세 필터")
         
-        # [백스페이스 해결] selectbox + text_input 하이브리드 방식
-        search_input = st.text_input("검색어 입력 (예: 태양광, ㅌㅇㄱ)", key="theme_input")
+        # [추가] 검색 범위 선택 (멀티셀렉트)
+        search_columns = st.multiselect(
+            "검색 범위를 선택하세요",
+            ["코어테마", "전체테마", "기사", "대장이력"],
+            default=["코어테마", "전체테마"]
+        )
         
-        if search_input:
+        # 검색어 입력
+        search_input = st.text_input("검색어 입력", key="theme_input")
+        
+        if search_input and search_columns:
+            # 1단계: 추천 리스트 필터링
             is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_input)
-            # 추천 리스트 필터링
             filtered_themes = [t for t in unique_themes if (search_input in get_chosung(t) if is_chosung else search_input.lower() in t.lower())]
-            # 입력한 단어를 무조건 0순위로
             if search_input not in filtered_themes:
                 filtered_themes.insert(0, search_input)
             
-            selected_theme = st.selectbox("추천 검색어 선택", filtered_themes, key="theme_select")
+            selected_keyword = st.selectbox("확정 검색어 선택", filtered_themes, key="theme_select")
             
-            if selected_theme:
-                res = df[df['코어테마'].astype(str).str.contains(selected_theme, na=False, case=False)].copy()
+            if selected_keyword:
+                # [수정] 선택된 컬럼들에서만 검색 수행
+                conditions = []
+                for col in search_columns:
+                    conditions.append(df[col].astype(str).str.contains(selected_keyword, na=False, case=False))
+                
+                # 하나라도 포함되면 필터링 (OR 조건)
+                res = df[pd.concat(conditions, axis=1).any(axis=1)].copy()
+                
                 if not res.empty:
-                    res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_theme))
+                    # 정렬 (코어테마 기준 가중치 유지)
+                    res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_keyword))
                     res = res.sort_values(by='sort_key', ascending=False)
                     
                     st.divider()
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        target = st.selectbox("상세 분석으로 연결할 종목을 선택하세요", ["선택 안함"] + res['종목명'].tolist())
+                        target = st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), key="target_select")
                     with col2:
-                        st.write(" ") # 레이아웃 정렬용
-                        if st.button("📈 상세페이지 이동", use_container_width=True):
-                            if target != "선택 안함":
-                                st.session_state.selected_stock = target
-                                st.session_state.menu_option = "📈 종목 상세 분석"
-                                st.rerun()
+                        st.write(" ")
+                        if st.button("📈 상세페이지 이동", use_container_width=True) and target != "선택 안함":
+                            st.session_state.selected_stock = target
+                            st.session_state.menu_option = "📈 종목 상세 분석"
+                            st.rerun()
 
-                    st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
+                    # 검색 결과 표 출력
+                    display_cols = ["종목명", "코어테마", "전체테마", "대장이력"]
+                    st.table(res[display_cols])
+                else:
+                    st.warning(f"선택한 범위 내에 '{selected_keyword}'가 포함된 종목이 없습니다.")
+        elif not search_columns:
+            st.info("위에서 검색 범위를 최소 하나 이상 선택해 주세요.")
 
     # 2. 종목 상세 분석 화면
     elif st.session_state.menu_option == "📈 종목 상세 분석":
         st.title("📈 종목 상세 분석")
-        
         if st.button("⬅️ 필터화면으로 돌아가기"):
             st.session_state.menu_option = "🔎 테마 필터"
             st.rerun()
 
-        # [데이터 전달 해결] 세션에 저장된 종목명을 기본값으로 설정
         all_stocks = df['종목명'].astype(str).tolist()
-        # 세션 값이 리스트에 있으면 해당 인덱스, 없으면 0번
         default_idx = all_stocks.index(st.session_state.selected_stock) if st.session_state.selected_stock in all_stocks else 0
-        
-        # 종목 검색창 (안정적인 selectbox 사용)
-        selected_stock = st.selectbox("분석할 종목을 선택하세요", all_stocks, index=default_idx)
+        selected_stock = st.selectbox("종목 선택", all_stocks, index=default_idx)
 
         if selected_stock:
             st.session_state.selected_stock = selected_stock
