@@ -3,8 +3,33 @@ import pandas as pd
 import re
 import os
 
-# 1. 페이지 설정
+# 1. 페이지 설정 및 전체 글자 크기 CSS 주입
 st.set_page_config(page_title="주식 통합 분석 시스템", layout="wide")
+
+# 모든 글자 크기를 검색창(약 16px) 수준으로 통일하는 CSS
+st.markdown("""
+    <style>
+    /* 전체 텍스트 및 입력창 글자 크기 */
+    html, body, [class*="css"], .stMarkdown, p, span {
+        font-size: 16px !important;
+    }
+    /* 제목 및 헤더 크기 축소 */
+    h1 { font-size: 20px !important; font-weight: bold !important; }
+    h2, h3 { font-size: 18px !important; font-weight: bold !important; }
+    /* 테이블 내부 글자 크기 */
+    .stTable td, .stTable th {
+        font-size: 15px !important;
+    }
+    /* 탭 메뉴 글자 크기 */
+    button[data-baseweb="tab"] div {
+        font-size: 16px !important;
+    }
+    /* 사이드바 메뉴 크기 */
+    section[data-testid="stSidebar"] .stRadio div {
+        font-size: 16px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- 유틸리티 함수 ---
 def get_chosung(text):
@@ -34,7 +59,6 @@ def load_all_data():
     df = None
     if os.path.exists("data.xlsx"):
         df = pd.read_excel("data.xlsx", engine='openpyxl')
-    
     themes = []
     if os.path.exists("theme_list.txt"):
         for encoding in ['utf-8', 'cp949', 'euc-kr']:
@@ -48,59 +72,55 @@ def load_all_data():
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # --- [중요] 세션 상태 초기화 및 유지 로직 ---
-    if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
+    # 세션 상태 초기화
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
-    
-    # 테마 검색 상태 유지용 변수들
+    if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'saved_search_input' not in st.session_state: st.session_state.saved_search_input = ""
-    if 'saved_search_cols' not in st.session_state: st.session_state.saved_search_cols = ["코어테마"] # 기본값 설정
+    if 'saved_search_cols' not in st.session_state: st.session_state.saved_search_cols = ["코어테마"]
     if 'saved_selected_keyword' not in st.session_state: st.session_state.saved_selected_keyword = None
 
-    # 사이드바 메뉴
+    # --- 사이드바 메뉴 (클릭 즉시 반응하도록 최적화) ---
     st.sidebar.title("💎 주식 분석")
-    st.session_state.menu_option = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], 
-                                                   index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
+    # radio의 값을 session_state에 직접 연결하여 버벅임 제거
+    choice = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], 
+                              key="menu_radio_sync",
+                              index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
+    
+    # 메뉴 변경 시 상태 업데이트 및 리런
+    if choice != st.session_state.menu_option:
+        st.session_state.menu_option = choice
+        st.rerun()
 
     # 1. 테마 필터 화면
     if st.session_state.menu_option == "🔎 테마 필터":
         st.title("🔎 테마 상세 필터")
         
-        # 검색 범위 선택 (기본값: 코어테마)
         search_columns = st.multiselect(
             "검색 범위를 선택하세요",
             ["코어테마", "전체테마", "기사", "대장이력", "키워드요약", "기사본문", "K스윙 정리"],
             default=st.session_state.saved_search_cols
         )
-        st.session_state.saved_search_cols = search_columns # 상태 저장
+        st.session_state.saved_search_cols = search_columns
         
-        # 검색어 입력 (이전 입력값 유지)
         search_input = st.text_input("검색어 입력", value=st.session_state.saved_search_input, key="theme_input")
-        st.session_state.saved_search_input = search_input # 상태 저장
+        st.session_state.saved_search_input = search_input
         
         if search_input and search_columns:
-            # 추천 리스트 필터링
             is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_input)
             filtered_themes = [t for t in unique_themes if (search_input in get_chosung(t) if is_chosung else search_input.lower() in t.lower())]
             if search_input not in filtered_themes:
                 filtered_themes.insert(0, search_input)
             
-            # 확정 검색어 선택 (이전 선택값 인덱스 찾기)
             try:
                 def_idx = filtered_themes.index(st.session_state.saved_selected_keyword) if st.session_state.saved_selected_keyword in filtered_themes else 0
             except:
                 def_idx = 0
                 
             selected_keyword = st.selectbox("확정 검색어 선택", filtered_themes, index=def_idx, key="theme_select")
-            st.session_state.saved_selected_keyword = selected_keyword # 상태 저장
+            st.session_state.saved_selected_keyword = selected_keyword
             
             if selected_keyword:
-                conditions = []
-                for col in search_columns:
-                    # 실제 엑셀 컬럼명과 매칭 (K스윙은 데이터에 따라 다를 수 있어 수정 필요 시 조정 가능)
-                    col_name = col if col != "K스윙 정리" else "K스윙 정리" 
-                    conditions.append(df[col_name].astype(str).str.contains(selected_keyword, na=False, case=False))
-                
+                conditions = [df[col].astype(str).str.contains(selected_keyword, na=False, case=False) for col in search_columns]
                 res = df[pd.concat(conditions, axis=1).any(axis=1)].copy()
                 
                 if not res.empty:
@@ -118,11 +138,7 @@ if df is not None:
                             st.session_state.menu_option = "📈 종목 상세 분석"
                             st.rerun()
 
-                    # 검색 결과 표 출력
-                    display_cols = ["종목명", "코어테마", "전체테마", "대장이력"]
-                    st.table(res[display_cols])
-                else:
-                    st.warning(f"선택한 범위 내에 '{selected_keyword}'가 포함된 종목이 없습니다.")
+                    st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
 
     # 2. 종목 상세 분석 화면
     elif st.session_state.menu_option == "📈 종목 상세 분석":
@@ -146,6 +162,6 @@ if df is not None:
             for i, col_name in mapping.items():
                 with tabs[i]:
                     content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
-                    st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #e9ecef; color:#333; font-size:16px;">{content}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef; color:#333; line-height:1.6;">{content}</div>', unsafe_allow_html=True)
 else:
     st.error("data.xlsx 파일을 찾을 수 없습니다.")
