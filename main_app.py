@@ -48,11 +48,16 @@ def load_all_data():
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # 세션 상태 관리
+    # --- [중요] 세션 상태 초기화 및 유지 로직 ---
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
+    
+    # 테마 검색 상태 유지용 변수들
+    if 'saved_search_input' not in st.session_state: st.session_state.saved_search_input = ""
+    if 'saved_search_cols' not in st.session_state: st.session_state.saved_search_cols = ["코어테마"] # 기본값 설정
+    if 'saved_selected_keyword' not in st.session_state: st.session_state.saved_selected_keyword = None
 
-    # 사이드바
+    # 사이드바 메뉴
     st.sidebar.title("💎 주식 분석")
     st.session_state.menu_option = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], 
                                                    index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
@@ -61,36 +66,44 @@ if df is not None:
     if st.session_state.menu_option == "🔎 테마 필터":
         st.title("🔎 테마 상세 필터")
         
-        # [추가] 검색 범위 선택 (멀티셀렉트)
+        # 검색 범위 선택 (기본값: 코어테마)
         search_columns = st.multiselect(
             "검색 범위를 선택하세요",
-            ["코어테마", "전체테마", "기사", "대장이력"],
-            default=["코어테마", "전체테마"]
+            ["코어테마", "전체테마", "기사", "대장이력", "키워드요약", "기사본문", "K스윙 정리"],
+            default=st.session_state.saved_search_cols
         )
+        st.session_state.saved_search_cols = search_columns # 상태 저장
         
-        # 검색어 입력
-        search_input = st.text_input("검색어 입력", key="theme_input")
+        # 검색어 입력 (이전 입력값 유지)
+        search_input = st.text_input("검색어 입력", value=st.session_state.saved_search_input, key="theme_input")
+        st.session_state.saved_search_input = search_input # 상태 저장
         
         if search_input and search_columns:
-            # 1단계: 추천 리스트 필터링
+            # 추천 리스트 필터링
             is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_input)
             filtered_themes = [t for t in unique_themes if (search_input in get_chosung(t) if is_chosung else search_input.lower() in t.lower())]
             if search_input not in filtered_themes:
                 filtered_themes.insert(0, search_input)
             
-            selected_keyword = st.selectbox("확정 검색어 선택", filtered_themes, key="theme_select")
+            # 확정 검색어 선택 (이전 선택값 인덱스 찾기)
+            try:
+                def_idx = filtered_themes.index(st.session_state.saved_selected_keyword) if st.session_state.saved_selected_keyword in filtered_themes else 0
+            except:
+                def_idx = 0
+                
+            selected_keyword = st.selectbox("확정 검색어 선택", filtered_themes, index=def_idx, key="theme_select")
+            st.session_state.saved_selected_keyword = selected_keyword # 상태 저장
             
             if selected_keyword:
-                # [수정] 선택된 컬럼들에서만 검색 수행
                 conditions = []
                 for col in search_columns:
-                    conditions.append(df[col].astype(str).str.contains(selected_keyword, na=False, case=False))
+                    # 실제 엑셀 컬럼명과 매칭 (K스윙은 데이터에 따라 다를 수 있어 수정 필요 시 조정 가능)
+                    col_name = col if col != "K스윙 정리" else "K스윙 정리" 
+                    conditions.append(df[col_name].astype(str).str.contains(selected_keyword, na=False, case=False))
                 
-                # 하나라도 포함되면 필터링 (OR 조건)
                 res = df[pd.concat(conditions, axis=1).any(axis=1)].copy()
                 
                 if not res.empty:
-                    # 정렬 (코어테마 기준 가중치 유지)
                     res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_keyword))
                     res = res.sort_values(by='sort_key', ascending=False)
                     
@@ -110,8 +123,6 @@ if df is not None:
                     st.table(res[display_cols])
                 else:
                     st.warning(f"선택한 범위 내에 '{selected_keyword}'가 포함된 종목이 없습니다.")
-        elif not search_columns:
-            st.info("위에서 검색 범위를 최소 하나 이상 선택해 주세요.")
 
     # 2. 종목 상세 분석 화면
     elif st.session_state.menu_option == "📈 종목 상세 분석":
