@@ -53,13 +53,20 @@ if df is not None:
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
 
-    # --- 검색 엔진 ---
+    # --- [수정] 테마 검색 엔진: 입력어 0순위 고정 ---
     def search_theme(search_term):
         if not search_term: return []
         search_term_lower = search_term.lower()
         is_chosung = all(char in "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ " for char in search_term)
+        
+        # 리스트 필터링
         matches = [t for t in unique_themes if (search_term in get_chosung(t) if is_chosung else search_term_lower in t.lower())]
-        if search_term not in matches: matches.insert(0, search_term)
+        
+        # 사용자가 입력한 단어가 리스트에 있든 없든 0순위로 강제 삽입 (엔터 시 우선 선택)
+        if search_term in matches:
+            matches.remove(search_term)
+        matches.insert(0, search_term)
+        
         return matches[:20]
 
     def search_stock(search_term):
@@ -80,7 +87,16 @@ if df is not None:
     # 1. 테마 필터 화면
     if st.session_state.menu_option == "🔎 테마 필터":
         st.title("🔎 테마별 종목 정렬 필터")
-        selected_theme = st_searchbox(search_theme, key="theme_box", placeholder="테마명 입력", edit_after_submit=True)
+        
+        # [수정] 포커스 유지를 위해 container 사용 및 전역 키 할당
+        theme_container = st.container()
+        with theme_container:
+            selected_theme = st_searchbox(
+                search_theme, 
+                key="theme_search_box_unique", 
+                placeholder="테마명 입력 후 엔터",
+                edit_after_submit=True
+            )
 
         if selected_theme:
             res = df[df['코어테마'].astype(str).str.contains(selected_theme, na=False, case=False)].copy()
@@ -88,7 +104,6 @@ if df is not None:
                 res['sort_key'] = res['코어테마'].apply(lambda x: get_sort_value(x, selected_theme))
                 res = res.sort_values(by='sort_key', ascending=False)
                 
-                # 버튼과 선택창 레이아웃
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     target = st.selectbox("상세 정보를 볼 종목 선택", ["선택 안함"] + res['종목명'].tolist(), label_visibility="collapsed")
@@ -103,12 +118,16 @@ if df is not None:
     # 2. 종목 상세 분석 화면
     elif st.session_state.menu_option == "📈 종목 상세 분석":
         st.title("📈 종목 상세 분석")
-        back_btn = st.button("⬅️ 필터화면으로 돌아가기")
-        if back_btn:
+        if st.button("⬅️ 필터화면으로 돌아가기"):
             st.session_state.menu_option = "🔎 테마 필터"
             st.rerun()
 
-        selected_stock = st_searchbox(search_stock, key="stock_box", default=st.session_state.selected_stock, edit_after_submit=True)
+        selected_stock = st_searchbox(
+            search_stock, 
+            key="stock_search_box_unique", 
+            default=st.session_state.selected_stock,
+            edit_after_submit=True
+        )
 
         if selected_stock:
             st.session_state.selected_stock = selected_stock
@@ -120,7 +139,6 @@ if df is not None:
             
             for i, col_name in mapping.items():
                 with tabs[i]:
-                    # [해결] .strip()을 사용하여 들여쓰기 공백 제거
                     content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
                     st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #e9ecef; color:#333;">{content}</div>', unsafe_allow_html=True)
 else:
