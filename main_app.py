@@ -9,13 +9,13 @@ st.set_page_config(page_title="주식 통합 분석 시스템", layout="wide")
 st.markdown("""
     <style>
     html, body, [class*="css"], .stMarkdown, p, span { font-size: 16px !important; }
-    <h1> { font-size: 20px !important; font-weight: bold !important; }
-    <h2>, <h3> { font-size: 18px !important; font-weight: bold !important; }
+    h1 { font-size: 20px !important; font-weight: bold !important; }
+    h2, h3 { font-size: 18px !important; font-weight: bold !important; }
     .stTable td, .stTable th { font-size: 15px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 상태 관리 콜백 함수 ---
+# --- 상태 관리 및 유틸리티 ---
 def update_target_stock():
     if st.session_state.target_select != "선택 안함":
         st.session_state.selected_stock = st.session_state.target_select
@@ -24,13 +24,11 @@ def move_to_detail():
     if st.session_state.selected_stock:
         st.session_state.menu_option = "📈 종목 상세 분석"
 
-# --- 데이터 로드 및 테마 관리 ---
 @st.cache_data
 def load_all_data():
     df = None
     if os.path.exists("data.xlsx"):
         df = pd.read_excel("data.xlsx", engine='openpyxl')
-    
     themes = []
     if os.path.exists("theme_list.txt"):
         for encoding in ['utf-8', 'cp949', 'euc-kr']:
@@ -42,30 +40,28 @@ def load_all_data():
     return df, themes
 
 def add_new_theme(new_theme):
-    """새로운 테마를 theme_list.txt에 추가"""
     if new_theme:
         with open("theme_list.txt", "a", encoding="utf-8") as f:
             f.write(f"\n{new_theme}")
         st.sidebar.success(f"'{new_theme}' 추가 완료!")
-        st.cache_data.clear() # 캐시 초기화하여 리스트 갱신
+        st.cache_data.clear()
         st.rerun()
 
+# --- 데이터 로드 ---
 df, unique_themes = load_all_data()
 
 if df is not None:
-    # 세션 초기화
     if 'menu_option' not in st.session_state: st.session_state.menu_option = "🔎 테마 필터"
     if 'selected_stock' not in st.session_state: st.session_state.selected_stock = ""
     if 'saved_search_input' not in st.session_state: st.session_state.saved_search_input = ""
     if 'saved_search_cols' not in st.session_state: st.session_state.saved_search_cols = ["코어테마"]
     if 'saved_selected_keyword' not in st.session_state: st.session_state.saved_selected_keyword = None
 
-    # 사이드바 메뉴
+    # 사이드바
     st.sidebar.title("💎 주식 분석")
     choice = st.sidebar.radio("메뉴", ["🔎 테마 필터", "📈 종목 상세 분석"], 
                               index=0 if st.session_state.menu_option == "🔎 테마 필터" else 1)
     
-    # --- [추가] 테마 키워드 추가 기능 ---
     st.sidebar.divider()
     st.sidebar.subheader("➕ 테마 리스트 업데이트")
     new_theme_input = st.sidebar.text_input("새 키워드 입력", key="new_theme_input")
@@ -86,15 +82,14 @@ if df is not None:
                 ["코어테마", "전체테마", "기사", "대장이력", "키워드요약", "기사본문", "K스윙 정리"],
                 default=st.session_state.saved_search_cols)
             st.session_state.saved_search_cols = search_columns
-        
         with col_opt2:
-            # --- [추가] 완전일치/포함 선택 기능 ---
-            search_mode = st.radio("검색 방식", ["포함", "완전 일치"], horizontal=True, help="'완전 일치' 선택 시 입력한 단어와 정확히 같은 데이터만 필터링합니다.")
+            search_mode = st.radio("검색 방식", ["포함", "완전 일치"], horizontal=True)
         
         search_input = st.text_input("검색어", value=st.session_state.saved_search_input, key="theme_input")
         st.session_state.saved_search_input = search_input
         
         if search_input and search_columns:
+            # 초성 검색 로직 생략(기존과 동일)
             def get_chosung(text):
                 CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
                 res = ""
@@ -113,11 +108,21 @@ if df is not None:
             st.session_state.saved_selected_keyword = selected_keyword
             
             if selected_keyword:
-                # --- [수정] 검색 로직 분기 ---
                 if search_mode == "완전 일치":
-                    # 양 옆에 구분자나 공백이 있는 경우 혹은 전체 문장이 일치하는 경우 처리 (정규표현식 활용 가능)
-                    # 여기서는 사용자 편의를 위해 해당 컬럼의 텍스트와 '완확히' 일치하거나 쉼표 등으로 구분된 경우를 찾습니다.
-                    cond = [df[col].astype(str).apply(lambda x: selected_keyword in [ s.strip() for s in re.split(',| ', x)]) for col in search_columns]
+                    # --- [핵심 개선] 숫자/기호 무시하고 단어 단위로 정확히 일치하는지 체크 ---
+                    def check_exact_match(cell_value, keyword):
+                        # 1. 문장을 단어 단위로 쪼갬 (숫자, 쉼표, 점 등으로 구분된 것들)
+                        # 예: "1. LNG5-1, LNG복합화력4" -> ['1', 'LNG5-1', 'LNG복합화력4']
+                        items = re.split(r'[,.\s]+', str(cell_value))
+                        for item in items:
+                            # 2. 각 아이템에서 숫자와 특수기호(-, _)를 제거
+                            # 예: 'LNG5-1' -> 'LNG', 'LNG복합화력4' -> 'LNG복합화력'
+                            pure_name = re.sub(r'[0-9\-_]', '', item).strip()
+                            if pure_name.lower() == keyword.lower():
+                                return True
+                        return False
+
+                    cond = [df[col].astype(str).apply(lambda x: check_exact_match(x, selected_keyword)) for col in search_columns]
                 else:
                     cond = [df[col].astype(str).str.contains(re.escape(selected_keyword), na=False, case=False) for col in search_columns]
                 
@@ -141,7 +146,7 @@ if df is not None:
 
                     st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
 
-    # 2. 종목 상세 분석 화면
+    # 2. 종목 상세 분석 화면 (기존과 동일)
     elif st.session_state.menu_option == "📈 종목 상세 분석":
         st.title("📈 종목 상세 분석")
         if st.button("⬅️ 필터화면으로 돌아가기"):
@@ -149,10 +154,8 @@ if df is not None:
             st.rerun()
 
         all_stocks = df['종목명'].astype(str).tolist()
-        try:
-            default_idx = all_stocks.index(st.session_state.selected_stock)
-        except:
-            default_idx = 0
+        try: default_idx = all_stocks.index(st.session_state.selected_stock)
+        except: default_idx = 0
             
         selected_stock = st.selectbox("종목 선택", all_stocks, index=default_idx, key="detail_stock_select")
 
