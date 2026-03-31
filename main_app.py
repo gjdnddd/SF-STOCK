@@ -27,8 +27,8 @@ def move_to_detail():
 @st.cache_data
 def load_all_data():
     df = None
-    if os.path.exists("종목 히스토리_NEW.xlsx"):
-        df = pd.read_excel("종목 히스토리_NEW.xlsx", engine='openpyxl')
+    if os.path.exists("종목_히스토리_NEW.xlsx"):
+        df = pd.read_excel("종목_히스토리_NEW.xlsx", engine='openpyxl')
     themes = []
     if os.path.exists("theme_list.txt"):
         for encoding in ['utf-8', 'cp949', 'euc-kr']:
@@ -166,4 +166,4 @@ if df is not None:
                     content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
                     st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef; color:#333; line-height:1.6;">{content}</div>', unsafe_allow_html=True)
 else:
-    st.error("종목 히스토리_NEW.xlsx 파일을 찾을 수 없습니다.")
+    st.error("종목_히스토리_NEW.xlsx 파일을 찾을 수 없습니다.")
