@@ -27,8 +27,8 @@ def move_to_detail():
 @st.cache_data
 def load_all_data():
     df = None
-    if os.path.exists("data.xlsx"):
-        df = pd.read_excel("data.xlsx", engine='openpyxl')
+    if os.path.exists("종목_히스토리_NEW.xlsx"):
+        df = pd.read_excel("종목_히스토리_NEW.xlsx", engine='openpyxl')
     themes = []
     if os.path.exists("theme_list.txt"):
         for encoding in ['utf-8', 'cp949', 'euc-kr']:
@@ -89,7 +89,6 @@ if df is not None:
         st.session_state.saved_search_input = search_input
         
         if search_input and search_columns:
-            # 초성 검색 로직 생략(기존과 동일)
             def get_chosung(text):
                 CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
                 res = ""
@@ -109,14 +108,9 @@ if df is not None:
             
             if selected_keyword:
                 if search_mode == "완전 일치":
-                    # --- [핵심 개선] 숫자/기호 무시하고 단어 단위로 정확히 일치하는지 체크 ---
                     def check_exact_match(cell_value, keyword):
-                        # 1. 문장을 단어 단위로 쪼갬 (숫자, 쉼표, 점 등으로 구분된 것들)
-                        # 예: "1. LNG5-1, LNG복합화력4" -> ['1', 'LNG5-1', 'LNG복합화력4']
                         items = re.split(r'[,.\s]+', str(cell_value))
                         for item in items:
-                            # 2. 각 아이템에서 숫자와 특수기호(-, _)를 제거
-                            # 예: 'LNG5-1' -> 'LNG', 'LNG복합화력4' -> 'LNG복합화력'
                             pure_name = re.sub(r'[0-9\-_]', '', item).strip()
                             if pure_name.lower() == keyword.lower():
                                 return True
@@ -146,7 +140,7 @@ if df is not None:
 
                     st.table(res[["종목명", "코어테마", "전체테마", "대장이력"]])
 
-    # 2. 종목 상세 분석 화면 (기존과 동일)
+    # 2. 종목 상세 분석 화면
     elif st.session_state.menu_option == "📈 종목 상세 분석":
         st.title("📈 종목 상세 분석")
         if st.button("⬅️ 필터화면으로 돌아가기"):
@@ -172,4 +166,4 @@ if df is not None:
                     content = str(row.get(col_name, "정보 없음")).replace("_x000D_", "\n").strip()
                     st.markdown(f'<div style="white-space:pre-wrap; background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef; color:#333; line-height:1.6;">{content}</div>', unsafe_allow_html=True)
 else:
-    st.error("data.xlsx 파일을 찾을 수 없습니다.")
+    st.error("종목_히스토리_NEW.xlsx 파일을 찾을 수 없습니다.")
