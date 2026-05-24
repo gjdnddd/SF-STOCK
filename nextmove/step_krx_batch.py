@@ -145,10 +145,18 @@ def fetch_null_rows(client: bigquery.Client, limit: int) -> list[dict]:
 
 
 def update_row(client: bigquery.Client, case_id: str, values: dict) -> None:
-    """단건 UPDATE."""
+    """
+    단건 UPDATE.
+    값이 None인 컬럼은 SET에서 제외 (기존 값 유지 — market_cond 등 overwrite 방지).
+    """
+    # None은 제외 (기존 DB 값을 지우지 않음)
+    non_null = {col: v for col, v in values.items() if v is not None}
+    if not non_null:
+        return  # 업데이트할 값 없음
+
     set_clauses = ", ".join(
-        f"{col} = {v if v is not None else 'NULL'}"
-        for col, v in values.items()
+        f"{col} = {v}"
+        for col, v in non_null.items()
     )
     query = f"""
     UPDATE `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}`
@@ -258,7 +266,8 @@ def process_date(
         values = {
             "rise_rate": rise_rate,
             "trade_amount": trade_amount,
-            "market_cond": f"'{market_cond}'" if market_cond else "NULL",
+            # market_cond: None이면 update_row에서 제외 → 기존 BQ 값 유지
+            "market_cond": f"'{market_cond}'" if market_cond else None,
             "d1_return": d_returns[0],
             "d2_return": d_returns[1],
             "d3_return": d_returns[2],
