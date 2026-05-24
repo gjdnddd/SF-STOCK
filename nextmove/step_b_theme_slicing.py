@@ -115,7 +115,14 @@ def search_similar_cases(
       market_cond,
       is_leader,
       keyword_summary,
-      master_memo
+      master_memo,
+      rise_rate,
+      trade_amount,
+      d1_return,
+      d2_return,
+      d3_return,
+      d4_return,
+      d5_return
     FROM `{project_id}.{dataset_id}.{table_id}`
     WHERE (core_theme = @core_theme OR REGEXP_CONTAINS(all_themes, @theme_pattern))
     ORDER BY event_date DESC
