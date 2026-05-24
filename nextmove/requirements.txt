@@ -1,3 +1,5 @@
 openpyxl
 google-cloud-bigquery
 pykrx
+anthropic
+requests
