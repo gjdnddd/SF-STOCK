@@ -138,7 +138,7 @@ def search_similar_cases(
     )
 
     try:
-        results = client.query(query, job_config=job_config).to_list()
+        results = client.query(query, job_config=job_config).result()
         return [dict(row) for row in results]
     except Exception as e:
         print(f"⚠️  BigQuery 쿼리 실패: {str(e)}")
