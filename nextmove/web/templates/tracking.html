@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %} — {{ pred.stock_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/" class="back-link">← 대시보드</a>
+    <h1>{{ pred.stock_name }} <span class="code">{{ pred.stock_code }}</span></h1>
+  </div>
+  {% if analysis.verdict %}
+  <span class="verdict-chip chip-{{ analysis.verdict|lower }}" style="font-size:1.1rem;padding:6px 16px;">
+    {{ analysis.verdict }}
+  </span>
+  {% endif %}
+</div>
+
+<!-- 편입 정보 -->
+<div class="info-row">
+  <div class="info-box">
+    <div class="info-label">편입일</div>
+    <div class="info-val">{{ pred.entry_date }}</div>
+  </div>
+  <div class="info-box">
+    <div class="info-label">편입가</div>
+    <div class="info-val">{{ "{:,}".format(pred.entry_price|int) if pred.entry_price else "—" }}</div>
+  </div>
+  <div class="info-box">
+    <div class="info-label">현재가</div>
+    <div class="info-val">{{ "{:,}".format(analysis.close) if analysis.close else "—" }}</div>
+  </div>
+  <div class="info-box">
+    <div class="info-label">수익률</div>
+    <div class="info-val {{ 'pos' if cur_ret and cur_ret > 0 else ('neg' if cur_ret and cur_ret < 0 else '') }}">
+      {% if cur_ret is not none %}{{ "%+.2f"|format(cur_ret) }}%{% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="info-box">
+    <div class="info-label">전략</div>
+    <div class="info-val small">{{ pred.strategy_code or "—" }}</div>
+  </div>
+</div>
+
+{% if pred.article_title %}
+<div class="article-title">📰 {{ pred.article_title }}</div>
+{% endif %}
+
+<!-- OHLC 패턴 분석 -->
+{% if analysis %}
+<section class="section">
+  <h2>오늘 일봉 분석 <span class="muted">{{ analysis.date }}</span></h2>
+
+  <div class="ohlc-summary">
+    <div class="ohlc-item">
+      <div class="ohlc-label">시가</div>
+      <div class="ohlc-val">{{ "{:,}".format(analysis.open) }}</div>
+      <div class="ohlc-sub {{ 'pos' if analysis.gap_pct > 0 else ('neg' if analysis.gap_pct < 0 else '') }}">
+        갭 {{ "%+.1f"|format(analysis.gap_pct) }}%
+      </div>
+    </div>
+    <div class="ohlc-item">
+      <div class="ohlc-label">고가</div>
+      <div class="ohlc-val high">{{ "{:,}".format(analysis.high) }}</div>
+      <div class="ohlc-sub pos">시가 대비 +{{ analysis.high_from_o }}%</div>
+    </div>
+    <div class="ohlc-item">
+      <div class="ohlc-label">저가</div>
+      <div class="ohlc-val low">{{ "{:,}".format(analysis.low) }}</div>
+      <div class="ohlc-sub neg">시가 대비 {{ analysis.low_from_o }}%</div>
+    </div>
+    <div class="ohlc-item">
+      <div class="ohlc-label">종가</div>
+      <div class="ohlc-val">{{ "{:,}".format(analysis.close) }}</div>
+      <div class="ohlc-sub {{ 'pos' if analysis.close_chg > 0 else 'neg' }}">
+        {{ "%+.1f"|format(analysis.close_chg) }}%
+      </div>
+    </div>
+    <div class="ohlc-item">
+      <div class="ohlc-label">종가위치</div>
+      <div class="ohlc-val">{{ analysis.body_pos }}%</div>
+      <div class="ohlc-sub">
+        {% if analysis.body_pos >= 70 %}고가권
+        {% elif analysis.body_pos >= 40 %}중간
+        {% else %}저가권{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 종가 위치 바 -->
+  <div class="body-bar-wrap">
+    <span class="muted small">저가</span>
+    <div class="body-bar">
+      <div class="body-marker" style="left:{{ analysis.body_pos }}%"></div>
+    </div>
+    <span class="muted small">고가</span>
+    <span class="body-pct">{{ analysis.body_pos }}%</span>
+  </div>
+
+  <!-- MA -->
+  <div class="ma-row">
+    <div class="ma-item {{ 'above' if analysis.close and analysis.ma3 and analysis.close >= analysis.ma3 else 'below' }}">
+      <span>MA3</span>
+      <strong>{{ "{:,}".format(analysis.ma3) if analysis.ma3 else "—" }}</strong>
+    </div>
+    <div class="ma-item {{ 'above' if analysis.close and analysis.ma8 and analysis.close >= analysis.ma8 else 'below' }}">
+      <span>MA8</span>
+      <strong>{{ "{:,}".format(analysis.ma8) if analysis.ma8 else "—" }}</strong>
+    </div>
+    <div class="ma-item {{ 'above' if analysis.close and analysis.ma20 and analysis.close >= analysis.ma20 else 'below' }}">
+      <span>MA20</span>
+      <strong>{{ "{:,}".format(analysis.ma20) if analysis.ma20 else "—" }}</strong>
+    </div>
+  </div>
+
+  <!-- 3가지 반등 신호 -->
+  <div class="signals-detail">
+    <h3>반등 시나리오 추정</h3>
+    <div class="signal-row">
+      <span class="sig-icon">{{ analysis.ma3_signal[0] }}</span>
+      <div>
+        <div class="sig-title">3일선 반등</div>
+        <div class="sig-desc">{{ analysis.ma3_signal[1] }}</div>
+      </div>
+    </div>
+    <div class="signal-row">
+      <span class="sig-icon">{{ analysis.prev_signal[0] }}</span>
+      <div>
+        <div class="sig-title">전일종가 반등</div>
+        <div class="sig-desc">{{ analysis.prev_signal[1] }}</div>
+      </div>
+    </div>
+    <div class="signal-row">
+      <span class="sig-icon">{{ analysis.open_signal[0] }}</span>
+      <div>
+        <div class="sig-title">당일시가 반등</div>
+        <div class="sig-desc">{{ analysis.open_signal[1] }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="verdict-box" style="border-color:{{ analysis.vcolor }}">
+    <div class="verdict-label">종합 판단</div>
+    <div class="verdict-val" style="color:{{ analysis.vcolor }}">{{ analysis.verdict }}</div>
+    <div class="verdict-score">신호 {{ analysis.score }}/5</div>
+  </div>
+</section>
+{% else %}
+<div class="alert warn">OHLC 데이터를 불러올 수 없습니다 (pykrx 오류 또는 종목코드 미입력)</div>
+{% endif %}
+
+<!-- 최근 일봉 테이블 -->
+{% if ohlc_rows %}
+<section class="section">
+  <h2>최근 일봉</h2>
+  <table class="ohlc-table">
+    <thead>
+      <tr><th>날짜</th><th>시가</th><th>고가</th><th>저가</th><th>종가</th><th>거래량</th></tr>
+    </thead>
+    <tbody>
+    {% for r in ohlc_rows %}
+    <tr class="{{ 'today-row' if loop.first else '' }}">
+      <td>{{ r.date }}</td>
+      <td>{{ "{:,}".format(r.open) }}</td>
+      <td class="high">{{ "{:,}".format(r.high) }}</td>
+      <td class="low">{{ "{:,}".format(r.low) }}</td>
+      <td><strong>{{ "{:,}".format(r.close) }}</strong></td>
+      <td class="muted">{{ "{:,}".format(r.volume) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<!-- D+N 실적 -->
+<section class="section">
+  <h2>D+N 실적</h2>
+  <div class="dn-row">
+    {% for d in [1,2,3,5,8] %}
+    {% set key = "d" ~ d ~ "_return" %}
+    {% set val = pred.get(key) %}
+    <div class="dn-item">
+      <div class="dn-label">D+{{ d }}</div>
+      <div class="dn-val {{ 'pos' if val and val > 0 else ('neg' if val and val < 0 else 'muted') }}">
+        {% if val is not none %}{{ "%+.1f"|format(val) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

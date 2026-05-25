@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %} — 대시보드{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>보유 종목 <span class="badge">{{ actives|length }}</span></h1>
+  <span class="subtitle">{{ today }}</span>
+</div>
+
+{% if not bq_ok %}
+<div class="alert error">BigQuery 연결 실패 — <code>gcloud auth application-default login</code> 실행 후 재시작</div>
+{% endif %}
+{% if not pykrx_ok %}
+<div class="alert warn">pykrx 미설치 — 실시간 OHLC 분석 불가. <code>pip install pykrx</code></div>
+{% endif %}
+
+{% if actives %}
+<div class="card-grid">
+{% for item in actives %}
+{% set a = item.analysis %}
+{% set v = a.verdict if a else '' %}
+<div class="stock-card verdict-{{ v|lower }}">
+  <div class="card-top">
+    <div class="card-name">
+      <strong>{{ item.stock_name }}</strong>
+      <span class="code">{{ item.stock_code }}</span>
+    </div>
+    <span class="verdict-chip chip-{{ v|lower }}">{{ v or '—' }}</span>
+  </div>
+
+  <div class="card-stats">
+    <div class="stat">
+      <div class="stat-label">편입가</div>
+      <div class="stat-val">{{ "{:,}".format(item.entry_price|int) if item.entry_price else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">현재가</div>
+      <div class="stat-val">{{ "{:,}".format(a.close) if a.close else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">수익률</div>
+      <div class="stat-val {{ 'pos' if item.cur_ret and item.cur_ret > 0 else ('neg' if item.cur_ret and item.cur_ret < 0 else '') }}">
+        {% if item.cur_ret is not none %}{{ "%+.1f"|format(item.cur_ret) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">D+1</div>
+      <div class="stat-val {{ 'pos' if item.d1_return and item.d1_return > 0 else ('neg' if item.d1_return and item.d1_return < 0 else '') }}">
+        {% if item.d1_return is not none %}{{ "%+.1f"|format(item.d1_return) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if a %}
+  <div class="card-signals">
+    <span title="{{ a.ma3_signal[1] }}">{{ a.ma3_signal[0] }} 3일선</span>
+    <span title="{{ a.prev_signal[1] }}">{{ a.prev_signal[0] }} 전일종가</span>
+    <span title="{{ a.open_signal[1] }}">{{ a.open_signal[0] }} 시가</span>
+  </div>
+  {% if a.close_chg is defined %}
+  <div class="card-ohlc">
+    갭 {{ "%+.1f"|format(a.gap_pct) }}% &nbsp;|&nbsp;
+    종가위치 {{ a.body_pos }}% &nbsp;|&nbsp;
+    등락 <span class="{{ 'pos' if a.close_chg > 0 else 'neg' }}">{{ "%+.1f"|format(a.close_chg) }}%</span>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="card-ohlc muted">OHLC 데이터 없음 (pykrx 오류)</div>
+  {% endif %}
+
+  <div class="card-footer">
+    <span class="entry-date">📅 {{ item.entry_date }}</span>
+    <a href="/tracking/{{ item.prediction_id }}" class="btn-sm">상세 분석 →</a>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+{% else %}
+<div class="empty-state">
+  <p>보유 종목 없음</p>
+  <p class="muted">파이프라인 실행 후 종목 편입 시 표시됩니다.</p>
+</div>
+{% endif %}
+{% endblock %}

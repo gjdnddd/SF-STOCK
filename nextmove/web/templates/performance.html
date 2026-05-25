@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %} — 성과{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>성과 분석</h1>
+</div>
+
+<!-- 요약 통계 -->
+<div class="perf-summary">
+  <div class="perf-card">
+    <div class="perf-label">전체</div>
+    <div class="perf-val">{{ total }}</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">보유 중</div>
+    <div class="perf-val">{{ active }}</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">종료</div>
+    <div class="perf-val">{{ closed }}</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">평균 수익률</div>
+    <div class="perf-val {{ 'pos' if avg_return and avg_return > 0 else ('neg' if avg_return and avg_return < 0 else '') }}">
+      {% if avg_return is not none %}{{ "%+.2f"|format(avg_return) }}%{% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">승률</div>
+    <div class="perf-val">{% if win_rate is not none %}{{ win_rate }}%{% else %}—{% endif %}</div>
+  </div>
+</div>
+
+<!-- D+N 평균 -->
+<section class="section">
+  <h2>D+N 평균 수익률</h2>
+  <div class="dn-row">
+    {% for d in [1,2,3,5] %}
+    {% set val = dx_avgs.get("d" ~ d) %}
+    <div class="dn-item large">
+      <div class="dn-label">D+{{ d }}</div>
+      <div class="dn-val {{ 'pos' if val and val > 0 else ('neg' if val and val < 0 else 'muted') }}">
+        {% if val is not none %}{{ "%+.2f"|format(val) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- 전략 코드별 실적 -->
+{% if strategy_summary %}
+<section class="section">
+  <h2>전략 코드별 실적</h2>
+  <table class="perf-table">
+    <thead>
+      <tr><th>전략 코드</th><th>건수</th><th>평균 수익률</th><th>승률</th></tr>
+    </thead>
+    <tbody>
+    {% for s in strategy_summary %}
+    <tr>
+      <td><code>{{ s.code }}</code></td>
+      <td>{{ s.count }}</td>
+      <td class="{{ 'pos' if s.avg_return and s.avg_return > 0 else ('neg' if s.avg_return and s.avg_return < 0 else '') }}">
+        {% if s.avg_return is not none %}{{ "%+.2f"|format(s.avg_return) }}%{% else %}—{% endif %}
+      </td>
+      <td>{% if s.win_rate is not none %}{{ s.win_rate }}%{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<!-- 전체 이력 -->
+<section class="section">
+  <h2>전체 이력</h2>
+  <table class="perf-table history">
+    <thead>
+      <tr>
+        <th>종목</th><th>편입일</th><th>상태</th>
+        <th>D+1</th><th>D+3</th><th>D+5</th><th>최종</th><th>편출 사유</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'active-row' if r.status == 'ACTIVE' else '' }}">
+      <td>
+        <strong>{{ r.stock_name }}</strong>
+        <span class="code">{{ r.stock_code }}</span>
+      </td>
+      <td>{{ r.entry_date }}</td>
+      <td><span class="status-chip {{ r.status|lower }}">{{ r.status }}</span></td>
+      {% for d in [1,3,5] %}
+      {% set val = r.get("d" ~ d ~ "_return") %}
+      <td class="{{ 'pos' if val and val > 0 else ('neg' if val and val < 0 else '') }}">
+        {% if val is not none %}{{ "%+.1f"|format(val) }}%{% else %}—{% endif %}
+      </td>
+      {% endfor %}
+      {% set fr = r.get("final_return") %}
+      <td class="{{ 'pos' if fr and fr > 0 else ('neg' if fr and fr < 0 else '') }}">
+        {% if fr is not none %}{{ "%+.1f"|format(fr) }}%{% else %}—{% endif %}
+      </td>
+      <td class="muted small">{{ r.exit_reason or "—" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

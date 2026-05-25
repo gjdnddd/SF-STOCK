@@ -71,6 +71,23 @@ def run_daily() -> None:
                 fp,
             )
 
+        # ── 1.5. KIS 분봉 수집 (장 마감 후 ACTIVE 종목 전체) ─────────────────
+        log(f"\n[1.5] KIS 분봉 수집 ...", fp)
+        try:
+            from step_kis_minute import run_collect as _kis_collect
+            for r in actives:
+                code = r.get("stock_code", "")
+                name = r.get("stock_name", code)
+                try:
+                    bars = _kis_collect(code)
+                    log(f"  {name} ({code}): {len(bars)}개 분봉 수집", fp)
+                except Exception as e:
+                    log(f"  [WARN] {name} 분봉 수집 실패: {e}", fp)
+        except ImportError:
+            log("  [SKIP] step_kis_minute 미설치 — 건너뜀", fp)
+        except Exception as e:
+            log(f"  [WARN] KIS 분봉 수집 오류: {e}", fp)
+
         # ── 2. D+1~D+8 실제 수익률 업데이트 ──────────────────────────────────
         log(f"\n[2] D+1~D+8 실제 수익률 업데이트 ...", fp)
         updated = 0

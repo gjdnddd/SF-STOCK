@@ -1,0 +1,5 @@
+flask>=3.0
+pykrx>=1.0
+google-cloud-bigquery>=3.0
+numpy>=1.24
+pandas>=2.0

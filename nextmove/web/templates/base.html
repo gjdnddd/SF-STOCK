@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NextMove{% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav>
+  <span class="nav-brand">📈 NextMove</span>
+  <div class="nav-links">
+    <a href="/"            class="{{ 'active' if request.endpoint == 'dashboard'   else '' }}">대시보드</a>
+    <a href="/performance" class="{{ 'active' if request.endpoint == 'performance' else '' }}">성과</a>
+    <a href="/pipeline"    class="{{ 'active' if request.endpoint == 'pipeline'    else '' }}">파이프라인</a>
+  </div>
+</nav>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
