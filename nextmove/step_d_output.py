@@ -82,13 +82,21 @@ STRENGTH_EMOJI = {"STRONG": "🔥", "MEDIUM": "⚖️", "WEAK": "❄️"}
 RISK_EMOJI = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 
 
-def format_individual_card(c_result: dict, step_a_result: Optional[dict] = None) -> str:
+CHART_EMOJI = {"PASS": "✅", "FLAG": "🟡", "FAIL": "❌"}
+
+
+def format_individual_card(
+    c_result: dict,
+    step_a_result: Optional[dict] = None,
+    step_e_result: Optional[dict] = None,
+) -> str:
     """
     개별 종목 분석 결과 → 텍스트 카드.
 
     Args:
         c_result: run_step_c_individual() 반환값
         step_a_result: Step A 결과 (verdict, material_type)
+        step_e_result: Step E 차트 필터 결과 (선택)
 
     Returns:
         str: 카드 텍스트
@@ -137,6 +145,29 @@ def format_individual_card(c_result: dict, step_a_result: Optional[dict] = None)
     if best_dates:
         dates_str = "  /  ".join(best_dates[:3])
         lines.append(f"│\n│ 📅 참고 사례: {dates_str}")
+
+    # Step E 차트 필터 섹션 (있는 경우)
+    if step_e_result:
+        e_verdict = step_e_result.get("verdict", "?")
+        e_emoji = CHART_EMOJI.get(e_verdict, "?")
+        e_score = step_e_result.get("score", 0)
+        e_reason = step_e_result.get("reason", "")
+        lines.append("│")
+        lines.append(f"│ 📈 차트 위치: {e_verdict} {e_emoji}  (점수 {e_score}/8)")
+        lines.append(f"│    {e_reason}")
+        if step_e_result.get("close"):
+            close = step_e_result["close"]
+            ma8 = step_e_result.get("ma8")
+            ma20 = step_e_result.get("ma20")
+            vol = step_e_result.get("volume_today")
+            vol_ratio = step_e_result.get("volume_ratio")
+            ma8_str = f"{ma8:,.0f}" if ma8 else "N/A"
+            ma20_str = f"{ma20:,.0f}" if ma20 else "N/A"
+            vol_str = f"{vol:.0f}억" if vol else "N/A"
+            ratio_str = f"({vol_ratio:.1f}x)" if vol_ratio else ""
+            lines.append(f"│    종가: {close:,.0f}  MA8: {ma8_str}  MA20: {ma20_str}")
+            lines.append(f"│    거래대금: {vol_str} {ratio_str}")
+
     lines.append("└" + "─" * 63)
 
     return "\n".join(lines)
@@ -168,18 +199,24 @@ def format_individual_dict(c_result: dict, step_a_result: Optional[dict] = None)
 # 경로 2: 테마 카드
 # ============================================================================
 
-def _stock_row(i: int, s: dict, dn: str = "d1") -> str:
-    """종목 랭킹 한 줄."""
+def _stock_row(i: int, s: dict, dn: str = "d1", chart_verdict: str = "") -> str:
+    """종목 랭킹 한 줄 (차트 뱃지 선택)."""
     name = s.get("stock_name", "?")[:10]
     avg = _pct(s.get(f"{dn}_avg"))
     wr = s.get(f"{dn}_win_rate")
     wr_str = f"승률{wr:.0f}%" if wr is not None else "승률N/A"
     freq = s.get("freq", 0)
     bar = _bar(s.get(f"{dn}_avg"))
-    return f"│  {i}. {name:<12} {avg:>7}  {bar}  {wr_str}  ({freq}회)"
+    badge = f"  {CHART_EMOJI.get(chart_verdict, '')}" if chart_verdict else ""
+    return f"│  {i}. {name:<12} {avg:>7}  {bar}  {wr_str}  ({freq}회){badge}"
 
 
-def format_theme_card(c_result: dict, core_theme: str = "", themes: list[str] = None) -> str:
+def format_theme_card(
+    c_result: dict,
+    core_theme: str = "",
+    themes: list[str] = None,
+    step_e_results: Optional[dict] = None,
+) -> str:
     """
     테마 분석 결과 → 텍스트 카드.
 
@@ -187,12 +224,15 @@ def format_theme_card(c_result: dict, core_theme: str = "", themes: list[str] = 
         c_result: run_step_c_theme() 반환값
         core_theme: 코어 테마명 (표시용)
         themes: 전체 테마 리스트 (표시용)
+        step_e_results: {stock_name: step_e_result} 차트 필터 결과 (선택)
 
     Returns:
         str: 카드 텍스트
     """
     if themes is None:
         themes = []
+    if step_e_results is None:
+        step_e_results = {}
 
     total = c_result.get("total_cases", 0)
     with_data = c_result.get("with_data", 0)
@@ -226,16 +266,21 @@ def format_theme_card(c_result: dict, core_theme: str = "", themes: list[str] = 
 
     # D+1 TOP
     if top_d1:
-        lines.append("│ 🥇 D+1 기대 수익 TOP (강한 종목 기준)")
+        chart_note = "  (✅PASS 🟡FLAG ❌FAIL)" if step_e_results else ""
+        lines.append(f"│ 🥇 D+1 기대 수익 TOP (강한 종목 기준){chart_note}")
         for i, s in enumerate(top_d1, 1):
-            lines.append(_stock_row(i, s, "d1"))
+            nm = s.get("stock_name", "")
+            verdict = step_e_results.get(nm, {}).get("verdict", "") if step_e_results else ""
+            lines.append(_stock_row(i, s, "d1", verdict))
         lines.append("│")
 
     # D+5 TOP
     if top_d5:
         lines.append("│ 📈 D+5 누적 수익 TOP")
         for i, s in enumerate(top_d5, 1):
-            lines.append(_stock_row(i, s, "d5"))
+            nm = s.get("stock_name", "")
+            verdict = step_e_results.get(nm, {}).get("verdict", "") if step_e_results else ""
+            lines.append(_stock_row(i, s, "d5", verdict))
         lines.append("│")
 
     # 빈도 TOP
@@ -246,7 +291,10 @@ def format_theme_card(c_result: dict, core_theme: str = "", themes: list[str] = 
             avg_rise = _pct(s.get("avg_rise"))
             d1_a = _pct(s.get("d1_avg"))
             name = s.get("stock_name", "?")[:10]
-            lines.append(f"│  {i}. {name:<12} {freq}회  D0 avg {avg_rise}  →  D+1 avg {d1_a}")
+            nm = s.get("stock_name", "")
+            verdict = step_e_results.get(nm, {}).get("verdict", "") if step_e_results else ""
+            badge = f"  {CHART_EMOJI.get(verdict, '')}" if verdict else ""
+            lines.append(f"│  {i}. {name:<12} {freq}회  D0 avg {avg_rise}  →  D+1 avg {d1_a}{badge}")
         lines.append("│")
 
     # 전체 통계
@@ -294,6 +342,8 @@ def run_step_d(
     c_result: dict,
     step_a_result: Optional[dict] = None,
     step_b_result: Optional[dict] = None,
+    step_e_result: Optional[dict] = None,    # 개별종목용
+    step_e_results: Optional[dict] = None,   # 테마용 {stock_name: result}
     print_card: bool = True,
 ) -> dict:
     """
@@ -303,6 +353,8 @@ def run_step_d(
         c_result: Step C 결과
         step_a_result: Step A 결과 (optional, 개별종목용)
         step_b_result: Step B 결과 (optional, 테마용 core_theme/themes)
+        step_e_result: Step E 차트 필터 결과 (개별종목용, optional)
+        step_e_results: Step E 차트 필터 결과 dict (테마용, optional)
         print_card: True면 콘솔에 카드 출력
 
     Returns:
@@ -311,7 +363,7 @@ def run_step_d(
     article_type = c_result.get("article_type", "individual")
 
     if article_type == "individual":
-        card_text = format_individual_card(c_result, step_a_result)
+        card_text = format_individual_card(c_result, step_a_result, step_e_result)
         card_dict = format_individual_dict(c_result, step_a_result)
     else:  # theme
         core_theme = ""
@@ -319,7 +371,7 @@ def run_step_d(
         if step_b_result:
             core_theme = step_b_result.get("core_theme", "")
             themes = step_b_result.get("themes", [])
-        card_text = format_theme_card(c_result, core_theme, themes)
+        card_text = format_theme_card(c_result, core_theme, themes, step_e_results)
         card_dict = format_theme_dict(c_result, core_theme, themes)
 
     if print_card:

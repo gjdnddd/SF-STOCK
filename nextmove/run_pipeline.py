@@ -5,18 +5,20 @@ NextMove 메인 파이프라인
   # 개별 종목 기사 분석
   python nextmove/run_pipeline.py individual \
     --stock "이수페타시스" \
+    --stock-code "007660" \
     --title "군용 통신장비 수출 계약 1,200억 체결" \
     --body "방위산업 수출 계약..."
 
-  # 테마 기사 분석
+  # 테마 기사 분석 (차트 필터 포함)
   python nextmove/run_pipeline.py theme \
     --core-theme "방산" \
     --themes "방산,수출,K방산,국방" \
-    --title "트럼프 2기 방산 예산 증액 발표"
+    --title "트럼프 2기 방산 예산 증액 발표" \
+    --chart-filter
 
   # 파이프라인 플로우
-  개별: Article → [A: 필터] → [C: 개별유사분석] → [D: 카드출력]
-  테마: Article → [A: 필터] → [B: 테마슬라이싱] → [C: 테마분석] → [D: 카드출력]
+  개별: Article → [A: 필터] → [C: 개별유사분석] → [E: 차트필터?] → [D: 카드출력]
+  테마: Article → [A: 필터] → [B: 테마슬라이싱] → [C: 테마분석] → [E: 차트필터?] → [D: 카드출력]
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from step_a_filter import run_step_a
 from step_b_theme_slicing import run_step_b
 from step_c_similarity import run_step_c_individual, run_step_c_theme
 from step_d_output import run_step_d
+from step_e_chart_filter import run_step_e, run_step_e_batch
 
 
 # ============================================================================
@@ -40,8 +43,10 @@ def pipeline_individual(
     stock_name: str,
     title: str,
     body: str = "",
+    stock_code: str = "",
     project_id: str = "infin-stock-bot",
     skip_filter: bool = False,
+    chart_filter: bool = False,
     json_output: bool = False,
 ) -> dict:
     """
@@ -53,8 +58,10 @@ def pipeline_individual(
         stock_name: 종목명
         title: 기사 제목
         body: 기사 본문 (선택)
+        stock_code: 6자리 종목코드 (Step E 차트필터용, 선택)
         project_id: GCP 프로젝트
         skip_filter: True면 Step A 건너뜀
+        chart_filter: True면 Step E 차트 필터 실행 (stock_code 필요)
         json_output: True면 카드 대신 JSON 출력
 
     Returns:
@@ -104,11 +111,26 @@ def pipeline_individual(
     strength = c_result.get("strength", {}).get("strength", "?")
     print(f"  → 재료 강도: {strength}")
 
+    # ── Step E: 차트 통과 필터 (선택) ─────────────────────────────
+    step_e_result = None
+    if chart_filter:
+        if stock_code:
+            print(f"\n[Step E] 차트 위치 확인 ({stock_code})...")
+            step_e_result = run_step_e(stock_code=stock_code, stock_name=stock_name)
+            e_verdict = step_e_result.get("verdict", "?")
+            e_emoji = {"PASS": "✅", "FLAG": "🟡", "FAIL": "❌"}.get(e_verdict, "?")
+            print(f"  → {e_verdict} {e_emoji}  {step_e_result.get('reason', '')}")
+            if e_verdict == "FAIL":
+                print("  ⛔ 차트 위치 불리 — 편입 비권고")
+        else:
+            print("\n[Step E] --stock-code 미입력, 차트 필터 건너뜀")
+
     # ── Step D: 카드 출력 ─────────────────────────────────────────
     print("\n[Step D] 결과 카드 생성...")
     d_result = run_step_d(
         c_result=c_result,
         step_a_result=step_a_result,
+        step_e_result=step_e_result,
         print_card=not json_output,
     )
 
@@ -116,6 +138,7 @@ def pipeline_individual(
         "status": "OK",
         "pipeline": "individual",
         "stock_name": stock_name,
+        "stock_code": stock_code,
         "title": title,
         "step_a": step_a_result,
         "step_c": {
@@ -123,6 +146,7 @@ def pipeline_individual(
             "strength": c_result.get("strength"),
             "stats_with_data": c_result.get("stats_with_data"),
         },
+        "step_e": step_e_result,
         "card": d_result,
     }
 
@@ -143,6 +167,7 @@ def pipeline_theme(
     body: str = "",
     project_id: str = "infin-stock-bot",
     skip_filter: bool = False,
+    chart_filter: bool = False,
     json_output: bool = False,
     strong_threshold: float = 3.0,
 ) -> dict:
@@ -158,6 +183,7 @@ def pipeline_theme(
         body: 기사 본문 (Step A용, 선택)
         project_id: GCP 프로젝트
         skip_filter: True면 Step A 건너뜀
+        chart_filter: True면 Step E 차트 필터로 TOP 종목 재필터링
         json_output: True면 JSON 출력
         strong_threshold: 강한 종목 D0 등락률 기준 (%)
 
@@ -216,11 +242,57 @@ def pipeline_theme(
           f"(D0>{strong_threshold}%, 총 {c_result['with_data']}건 중)")
     print(f"  → 유사 테마 날짜: {len(c_result['theme_dates'])}일")
 
+    # ── Step E: TOP 종목 차트 필터 (선택) ────────────────────────
+    step_e_results = {}
+    if chart_filter:
+        # BQ similar_cases에서 stock_name → 최신 stock_code 매핑 구축
+        name_to_code: dict[str, str] = {}
+        for case in b_result.get("similar_cases", []):
+            nm = case.get("stock_name", "")
+            cd = case.get("stock_code", "")
+            if nm and cd and nm not in name_to_code:
+                name_to_code[nm] = cd
+
+        # top 종목 목록 (D1/D5/빈도 TOP)
+        top_names = set()
+        for lst in [
+            c_result.get("top_by_d1", []),
+            c_result.get("top_by_d5", []),
+            c_result.get("top_by_freq", []),
+        ]:
+            for item in lst:
+                top_names.add(item.get("stock_name", ""))
+        top_names.discard("")
+
+        if top_names:
+            candidates = [
+                {"stock_code": name_to_code.get(nm, ""), "stock_name": nm}
+                for nm in top_names
+                if name_to_code.get(nm)
+            ]
+            no_code = [nm for nm in top_names if not name_to_code.get(nm)]
+
+            print(f"\n[Step E] TOP {len(candidates)}개 종목 차트 필터 실행...")
+            if no_code:
+                print(f"  ⚠️ 코드 없는 종목 제외: {', '.join(no_code)}")
+
+            for cand in candidates:
+                r = run_step_e(
+                    stock_code=cand["stock_code"],
+                    stock_name=cand["stock_name"],
+                )
+                e_emoji = {"PASS": "✅", "FLAG": "🟡", "FAIL": "❌"}.get(r["verdict"], "?")
+                print(f"  {e_emoji} {r['stock_name']} — {r['reason']}")
+                step_e_results[r["stock_name"]] = r
+        else:
+            print("\n[Step E] 차트 필터 대상 종목 없음 (D1/D5 데이터 부족)")
+
     # ── Step D: 카드 출력 ─────────────────────────────────────────
     print("\n[Step D] 결과 카드 생성...")
     d_result = run_step_d(
         c_result=c_result,
         step_b_result=b_result,
+        step_e_results=step_e_results if step_e_results else None,
         print_card=not json_output,
     )
 
@@ -245,6 +317,7 @@ def pipeline_theme(
             "top_by_d1": c_result.get("top_by_d1"),
             "top_by_d5": c_result.get("top_by_d5"),
         },
+        "step_e": step_e_results if step_e_results else None,
         "card": d_result,
     }
 
@@ -288,9 +361,11 @@ def build_parser() -> argparse.ArgumentParser:
     # 개별 종목 서브커맨드
     p_ind = sub.add_parser("individual", aliases=["ind", "i"], help="개별 종목 기사 분석")
     p_ind.add_argument("--stock", required=True, help="종목명")
+    p_ind.add_argument("--stock-code", default="", help="6자리 종목코드 (Step E 차트필터용)")
     p_ind.add_argument("--title", required=True, help="기사 제목")
     p_ind.add_argument("--body", default="", help="기사 본문 (선택)")
     p_ind.add_argument("--skip-filter", action="store_true", help="Step A 건너뜀")
+    p_ind.add_argument("--chart-filter", action="store_true", help="Step E 차트 위치 확인")
     p_ind.add_argument("--json", action="store_true", help="JSON 출력")
     p_ind.add_argument("--project", default="infin-stock-bot")
 
@@ -301,6 +376,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_thm.add_argument("--title", default="", help="기사 제목 (Step A 필터용, 선택)")
     p_thm.add_argument("--body", default="", help="기사 본문 (선택)")
     p_thm.add_argument("--skip-filter", action="store_true", help="Step A 건너뜀")
+    p_thm.add_argument("--chart-filter", action="store_true",
+                       help="TOP 종목 차트 위치 확인 (Step E, pykrx)")
     p_thm.add_argument("--strong-threshold", type=float, default=3.0,
                        help="강한 종목 D0 등락률 기준 %% (기본 3.0)")
     p_thm.add_argument("--json", action="store_true", help="JSON 출력")
@@ -320,8 +397,10 @@ def main() -> None:
             stock_name=args.stock,
             title=args.title,
             body=args.body,
+            stock_code=getattr(args, "stock_code", ""),
             project_id=args.project,
             skip_filter=args.skip_filter,
+            chart_filter=getattr(args, "chart_filter", False),
             json_output=args.json,
         )
 
@@ -333,6 +412,7 @@ def main() -> None:
             body=args.body,
             project_id=args.project,
             skip_filter=args.skip_filter,
+            chart_filter=getattr(args, "chart_filter", False),
             json_output=getattr(args, "json", False),
             strong_threshold=args.strong_threshold,
         )
