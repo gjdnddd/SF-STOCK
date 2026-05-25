@@ -4,11 +4,11 @@
 {% block content %}
 <div class="page-header">
   <h1>파이프라인 실행</h1>
-  <span class="subtitle">VM에서 실행할 명령어를 생성합니다</span>
+  <span class="subtitle">기사 입력 → VM 분석 → 결과 표시 (약 15~30초)</span>
 </div>
 
 <section class="section">
-  <form method="POST" class="pipeline-form">
+  <form method="POST" class="pipeline-form" id="pipeline-form">
 
     <div class="form-group">
       <label>분석 유형</label>
@@ -26,76 +26,126 @@
 
     <div class="form-group">
       <label for="title">기사 제목 <span class="required">*</span></label>
-      <input type="text" id="title" name="title" placeholder="예: 방산 수출 계약 1,200억 체결" required>
+      <input type="text" id="title" name="title" placeholder="예: 방산 수출 계약 1,200억 체결" required
+             value="{{ request.form.get('title', '') }}">
     </div>
 
     <div class="form-group">
       <label for="body">기사 본문 (선택, 앞 200자)</label>
-      <textarea id="body" name="body" rows="3" placeholder="본문 앞부분을 붙여넣으세요 (없어도 됩니다)"></textarea>
+      <textarea id="body" name="body" rows="3"
+                placeholder="본문 앞부분을 붙여넣으세요 (없어도 됩니다)">{{ request.form.get('body', '') }}</textarea>
     </div>
 
-    <!-- 개별 종목 필드 -->
     <div id="individual-fields">
       <div class="form-row">
         <div class="form-group">
           <label for="stock_name">종목명 <span class="required">*</span></label>
-          <input type="text" id="stock_name" name="stock_name" placeholder="예: 이수페타시스">
+          <input type="text" id="stock_name" name="stock_name" placeholder="예: 이수페타시스"
+                 value="{{ request.form.get('stock_name', '') }}">
         </div>
         <div class="form-group">
           <label for="stock_code">종목코드 (차트필터용)</label>
-          <input type="text" id="stock_code" name="stock_code" placeholder="예: 007660" maxlength="6">
+          <input type="text" id="stock_code" name="stock_code" placeholder="예: 007660" maxlength="6"
+                 value="{{ request.form.get('stock_code', '') }}">
         </div>
       </div>
     </div>
 
-    <!-- 테마 필드 -->
     <div id="theme-fields" style="display:none">
       <div class="form-row">
         <div class="form-group">
           <label for="core_theme">핵심 테마 <span class="required">*</span></label>
-          <input type="text" id="core_theme" name="core_theme" placeholder="예: 방산">
+          <input type="text" id="core_theme" name="core_theme" placeholder="예: 방산"
+                 value="{{ request.form.get('core_theme', '') }}">
         </div>
         <div class="form-group">
           <label for="themes">테마 목록 (쉼표 구분)</label>
-          <input type="text" id="themes" name="themes" placeholder="예: 방산,수출,K방산,국방">
+          <input type="text" id="themes" name="themes" placeholder="예: 방산,수출,K방산,국방"
+                 value="{{ request.form.get('themes', '') }}">
         </div>
       </div>
     </div>
 
     <div class="form-group">
       <label class="checkbox-label">
-        <input type="checkbox" name="chart_filter" value="on">
-        차트 필터 적용 (Step E)
+        <input type="checkbox" name="chart_filter" value="on"
+               {{ 'checked' if request.form.get('chart_filter') == 'on' else '' }}>
+        차트 필터 적용 (Step E — 종목코드 필요)
       </label>
     </div>
 
-    <button type="submit" class="btn-primary">명령어 생성</button>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary" id="submit-btn">분석 실행</button>
+      <div id="loading" style="display:none" class="loading-wrap">
+        <span class="spinner"></span>
+        <span id="loading-text">VM 연결 중...</span>
+      </div>
+    </div>
   </form>
 </section>
 
-{% if cmd %}
+{% if error %}
+<div class="alert error">{{ error }}</div>
+{% endif %}
+
+{% if result_text %}
 <section class="section">
-  <h2>VM 실행 명령어</h2>
-  <div class="cmd-box">
-    <pre id="cmd-text">{{ cmd }}</pre>
-    <button class="btn-copy" onclick="copyCmd()">복사</button>
+  <div class="result-header">
+    <h2>분석 결과</h2>
+    <button class="btn-copy" onclick="copyResult()">복사</button>
   </div>
-  <p class="muted small">위 명령어를 터미널에 붙여넣어 실행하세요.</p>
+  <pre id="result-text" class="result-box">{{ result_text }}</pre>
 </section>
 {% endif %}
 
 <script>
+// 폼 제출 시 로딩 표시
+document.getElementById('pipeline-form').addEventListener('submit', function() {
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = '분석 중...';
+  document.getElementById('loading').style.display = 'flex';
+
+  const steps = [
+    { delay: 0,     text: 'VM 연결 중...' },
+    { delay: 5000,  text: 'Step A: 재료 필터링...' },
+    { delay: 10000, text: 'Step C: 유사 사례 분석...' },
+    { delay: 20000, text: 'Step D: 결과 카드 생성...' },
+    { delay: 30000, text: '거의 완료...' },
+  ];
+  steps.forEach(function(s) {
+    setTimeout(function() {
+      var el = document.getElementById('loading-text');
+      if (el) el.textContent = s.text;
+    }, s.delay);
+  });
+});
+
 function toggleMode(val) {
   document.getElementById('individual-fields').style.display = val === 'individual' ? '' : 'none';
   document.getElementById('theme-fields').style.display      = val === 'theme'      ? '' : 'none';
 }
-function copyCmd() {
-  const t = document.getElementById('cmd-text').innerText;
-  navigator.clipboard.writeText(t).then(() => {
+
+function copyResult() {
+  const t = document.getElementById('result-text').innerText;
+  navigator.clipboard.writeText(t).then(function() {
     const btn = document.querySelector('.btn-copy');
     btn.textContent = '복사됨!';
-    setTimeout(() => btn.textContent = '복사', 2000);
+    setTimeout(function() { btn.textContent = '복사'; }, 2000);
   });
 }
+
+// 결과 있으면 스크롤
+{% if result_text %}
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelector('.result-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+{% endif %}
+
+// 이전 선택 모드 복원
+{% if request.form.get('mode') == 'theme' %}
+document.querySelector('[value="theme"]').checked = true;
+toggleMode('theme');
+{% endif %}
 </script>
 {% endblock %}

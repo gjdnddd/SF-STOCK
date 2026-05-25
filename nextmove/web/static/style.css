@@ -205,6 +205,21 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
             cursor: pointer; transition: opacity .15s; }
 .btn-copy:hover { opacity: .85; }
 
+/* ── Loading ── */
+.form-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.loading-wrap { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.spinner { width: 18px; height: 18px; border: 2px solid var(--border);
+           border-top-color: var(--accent); border-radius: 50%;
+           animation: spin .7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Result ── */
+.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.result-box { background: var(--bg3); border-radius: var(--radius); padding: 16px;
+              font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px;
+              line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+              color: var(--text); max-height: 600px; overflow-y: auto; }
+
 /* ── Shared ── */
 .pos   { color: var(--pos); }
 .neg   { color: var(--neg); }

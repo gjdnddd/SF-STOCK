@@ -6,8 +6,11 @@ PC / 노트북 양쪽 접근 가능 (같은 네트워크)
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
+import tempfile
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -282,38 +285,64 @@ def performance():
 
 @app.route("/pipeline", methods=["GET", "POST"])
 def pipeline():
-    cmd = None
+    result_text = None
+    error       = None
+
     if request.method == "POST":
-        mode       = request.form.get("mode", "individual")
-        title      = request.form.get("title", "").replace("'", "\\'")
-        body       = request.form.get("body", "").replace("'", "\\'")[:200]
-        stock_name = request.form.get("stock_name", "")
-        stock_code = request.form.get("stock_code", "")
-        core_theme = request.form.get("core_theme", "")
-        themes     = request.form.get("themes", "")
-        use_chart  = request.form.get("chart_filter") == "on"
+        mode      = request.form.get("mode", "individual")
+        use_chart = request.form.get("chart_filter") == "on"
 
-        src_cmd = f"source /home/{VM_USER}/.bashrc_env && cd {VM_PATH}"
-
+        args: dict = {
+            "mode":         mode,
+            "title":        request.form.get("title", ""),
+            "body":         request.form.get("body", "")[:200],
+            "chart_filter": use_chart,
+        }
         if mode == "individual":
-            parts = [f"python3 run_pipeline.py individual",
-                     f"--stock '{stock_name}'",
-                     f"--title '{title}'"]
-            if stock_code: parts.append(f"--stock-code '{stock_code}'")
-            if body:        parts.append(f"--body '{body[:100]}'")
-            if use_chart:   parts.append("--chart-filter")
+            args["stock_name"] = request.form.get("stock_name", "")
+            args["stock_code"] = request.form.get("stock_code", "")
         else:
-            parts = [f"python3 run_pipeline.py theme",
-                     f"--core-theme '{core_theme}'",
-                     f"--themes '{themes}'",
-                     f"--title '{title}'"]
-            if body:      parts.append(f"--body '{body[:100]}'")
-            if use_chart: parts.append("--chart-filter")
+            args["core_theme"] = request.form.get("core_theme", "")
+            args["themes"]     = request.form.get("themes", "")
 
-        inner = " \\\n  ".join(parts)
-        cmd   = f"gcloud compute ssh {VM_NAME} --zone={VM_ZONE} \\\n  --command='{src_cmd} && {inner}'"
+        tmp_json = Path(tempfile.gettempdir()) / "nm_web_args.json"
+        tmp_json.write_text(json.dumps(args, ensure_ascii=False), encoding="utf-8")
 
-    return render_template("pipeline.html", cmd=cmd)
+        try:
+            # ── 1. VM에 인자 JSON 업로드 (한글 인코딩 문제 우회) ─────────────
+            scp = subprocess.run(
+                ["gcloud", "compute", "scp", str(tmp_json),
+                 f"{VM_NAME}:/tmp/nm_web_args.json", f"--zone={VM_ZONE}"],
+                capture_output=True, timeout=30,
+            )
+            if scp.returncode != 0:
+                raise RuntimeError(f"SCP 실패: {scp.stderr.decode(errors='replace')}")
+
+            # ── 2. VM에서 래퍼 스크립트 실행 ─────────────────────────────────
+            inner = (
+                f"source /home/{VM_USER}/.bashrc_env && "
+                f"cd {VM_PATH} && "
+                f"python3 web/run_wrapper.py"
+            )
+            ssh = subprocess.run(
+                ["gcloud", "compute", "ssh", VM_NAME,
+                 f"--zone={VM_ZONE}",
+                 f"--command=sudo -H -u {VM_USER} bash -c '{inner}'"],
+                capture_output=True, timeout=120,
+                encoding="utf-8", errors="replace",
+            )
+            result_text = (ssh.stdout or "").strip()
+            if ssh.returncode != 0 and not result_text:
+                raise RuntimeError(ssh.stderr or "VM 실행 오류")
+
+        except subprocess.TimeoutExpired:
+            error = "실행 시간 초과 (120초) — VM 상태를 확인하세요."
+        except Exception as e:
+            error = str(e)
+        finally:
+            tmp_json.unlink(missing_ok=True)
+
+    return render_template("pipeline.html", result_text=result_text, error=error)
 
 
 if __name__ == "__main__":
