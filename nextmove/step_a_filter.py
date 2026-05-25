@@ -130,8 +130,13 @@ def claude_filter(stock_name: str, title: str, body: str = "") -> dict:
         messages=[{"role": "user", "content": user_message}]
     )
 
-    # JSON 파싱
+    # JSON 파싱 (```json ... ``` 마크다운 블록 자동 제거)
+    import re as _re
     text = response.content[0].text.strip()
+    # 마크다운 코드블록 제거
+    match = _re.search(r'\{.*\}', text, _re.DOTALL)
+    if match:
+        text = match.group(0)
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:

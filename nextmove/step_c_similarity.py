@@ -179,7 +179,12 @@ def assess_strength_with_claude(
             system=STRENGTH_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}]
         )
+        import re as _re
         text = response.content[0].text.strip()
+        # 마크다운 코드블록 제거 (```json...``` 형태 처리)
+        match = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if match:
+            text = match.group(0)
         return json.loads(text)
     except json.JSONDecodeError:
         return {
