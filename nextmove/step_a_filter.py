@@ -106,7 +106,7 @@ SYSTEM_PROMPT = """당신은 한국 주식 단기 모멘텀 투자의 재료 필
 }"""
 
 
-def claude_filter(stock_name: str, title: str, body: str = "") -> dict:
+def claude_filter(stock_name: str, title: str, body: str = "", known_themes: list[str] | None = None) -> dict:
     """
     2차 Claude Haiku 판단.
 
@@ -114,13 +114,17 @@ def claude_filter(stock_name: str, title: str, body: str = "") -> dict:
         stock_name: 종목명
         title: 기사 제목
         body: 기사 본문 (선택)
+        known_themes: 과거 DB에서 조회된 종목의 core_theme 목록 (선택)
+                      → Haiku가 종목-테마 연결고리 파악하는 데 활용
 
     Returns:
         dict: {"verdict": "PASS|FLAG|REJECT", "material_type": "...", ...}
     """
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
+    themes_str = ", ".join(known_themes) if known_themes else "없음"
     user_message = f"""종목: {stock_name}
+과거 DB 테마: {themes_str}
 기사 제목: {title}
 기사 본문: {body if body.strip() else '(없음)'}"""
 
@@ -153,7 +157,7 @@ def claude_filter(stock_name: str, title: str, body: str = "") -> dict:
 # 통합 실행
 # ============================================================================
 
-def run_step_a(stock_name: str, title: str, body: str = "") -> dict:
+def run_step_a(stock_name: str, title: str, body: str = "", known_themes: list[str] | None = None) -> dict:
     """
     Step A 전체 실행 (1차 + 2차).
 
@@ -161,6 +165,7 @@ def run_step_a(stock_name: str, title: str, body: str = "") -> dict:
         stock_name: 종목명
         title: 기사 제목
         body: 기사 본문 (선택)
+        known_themes: 과거 DB에서 조회된 종목의 core_theme 목록 (선택)
 
     Returns:
         dict: 판정 결과
@@ -171,7 +176,7 @@ def run_step_a(stock_name: str, title: str, body: str = "") -> dict:
         return result  # 즉시 REJECT
 
     # 2차: Claude API
-    return claude_filter(stock_name, title, body)
+    return claude_filter(stock_name, title, body, known_themes=known_themes)
 
 
 # ============================================================================

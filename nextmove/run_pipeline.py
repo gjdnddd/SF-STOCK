@@ -35,6 +35,33 @@ from step_d_output import run_step_d
 from step_e_chart_filter import run_step_e, run_step_e_batch
 
 
+def _fetch_known_themes(stock_name: str, project_id: str) -> list[str]:
+    """
+    개별 종목 분석 시 Step A 호출 전 사전 조회.
+    과거 DB에서 해당 종목의 distinct core_theme 목록을 반환.
+    Haiku가 종목-테마 연결고리를 파악하는 데 활용.
+    """
+    try:
+        from google.cloud import bigquery
+        client = bigquery.Client(project=project_id)
+        sql = """
+        SELECT DISTINCT core_theme
+        FROM `infin-stock-bot.nextmove_master.case_events`
+        WHERE stock_name = @stock_name AND core_theme IS NOT NULL
+        ORDER BY core_theme
+        LIMIT 10
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("stock_name", "STRING", stock_name)
+            ]
+        )
+        rows = list(client.query(sql, job_config=job_config).result())
+        return [r.core_theme for r in rows]
+    except Exception:
+        return []
+
+
 # ============================================================================
 # 경로 1: 개별 종목 기사 파이프라인
 # ============================================================================
@@ -74,10 +101,15 @@ def pipeline_individual(
 
     step_a_result = None
 
+    # ── Step A 전: 과거 DB 테마 사전 조회 ─────────────────────────
+    known_themes = _fetch_known_themes(stock_name, project_id)
+    if known_themes:
+        print(f"\n[DB] 과거 테마: {', '.join(known_themes)}")
+
     # ── Step A: 재료 필터 ──────────────────────────────────────────
     if not skip_filter:
         print("\n[Step A] 재료 필터링...")
-        step_a_result = run_step_a(stock_name, title, body)
+        step_a_result = run_step_a(stock_name, title, body, known_themes=known_themes)
         verdict = step_a_result.get("verdict", "FLAG")
         print(f"  → {verdict}  ({step_a_result.get('reason', '')})")
 
