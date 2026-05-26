@@ -372,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 테마 서브커맨드
     p_thm = sub.add_parser("theme", aliases=["th", "t"], help="테마 기사 분석")
     p_thm.add_argument("--core-theme", required=True, help="코어 테마 (예: 방산)")
-    p_thm.add_argument("--themes", required=True, help="전체 테마 쉼표 구분 (예: 방산,수출,K방산)")
+    p_thm.add_argument("--themes", default="", help="전체 테마 쉼표 구분 (예: 방산,수출,K방산) — 미입력 시 core-theme 단독 검색")
     p_thm.add_argument("--title", default="", help="기사 제목 (Step A 필터용, 선택)")
     p_thm.add_argument("--body", default="", help="기사 본문 (선택)")
     p_thm.add_argument("--skip-filter", action="store_true", help="Step A 건너뜀")

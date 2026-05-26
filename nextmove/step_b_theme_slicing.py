@@ -11,12 +11,8 @@ Step B: 테마 슬라이싱 (유사 사례 검색)
 
 import re
 import sys
-import io
 from google.cloud import bigquery
 from typing import Optional
-
-# 한글 인코딩 설정
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 
 # ============================================================================
@@ -94,13 +90,26 @@ def search_similar_cases(
     Returns:
         과거 사례 리스트 (dict 형태)
     """
-    if not core_theme or not all_themes:
+    if not core_theme:
         return []
 
     client = bigquery.Client(project=project_id)
 
-    # 테마 정규식 생성 (OR 조건: 테마 중 최소 1개 포함)
-    theme_pattern = "|".join(re.escape(t) for t in all_themes)
+    # all_themes가 비어있으면 core_theme 단독 검색
+    if all_themes:
+        theme_pattern = "|".join(re.escape(t) for t in all_themes)
+        where_clause = "core_theme = @core_theme OR REGEXP_CONTAINS(all_themes, @theme_pattern)"
+        params = [
+            bigquery.ScalarQueryParameter("core_theme", "STRING", core_theme),
+            bigquery.ScalarQueryParameter("theme_pattern", "STRING", theme_pattern),
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+        ]
+    else:
+        where_clause = "core_theme = @core_theme OR REGEXP_CONTAINS(all_themes, @core_theme)"
+        params = [
+            bigquery.ScalarQueryParameter("core_theme", "STRING", core_theme),
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+        ]
 
     query = f"""
     SELECT
@@ -124,18 +133,12 @@ def search_similar_cases(
       d4_return,
       d5_return
     FROM `{project_id}.{dataset_id}.{table_id}`
-    WHERE (core_theme = @core_theme OR REGEXP_CONTAINS(all_themes, @theme_pattern))
+    WHERE ({where_clause})
     ORDER BY event_date DESC
     LIMIT @limit
     """
 
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("core_theme", "STRING", core_theme),
-            bigquery.ScalarQueryParameter("theme_pattern", "STRING", theme_pattern),
-            bigquery.ScalarQueryParameter("limit", "INT64", limit),
-        ]
-    )
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
 
     try:
         results = client.query(query, job_config=job_config).result()
