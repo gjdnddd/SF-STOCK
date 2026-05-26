@@ -261,6 +261,7 @@ def run_step_c_individual(
 
 def run_step_c_theme(
     similar_cases: list[dict],
+    search_themes: list[str] | None = None,
     strong_threshold: float = STRONG_STOCK_THRESHOLD,
     leader_threshold: float = LEADER_STOCK_THRESHOLD,
 ) -> dict:
@@ -287,6 +288,10 @@ def run_step_c_theme(
             "all_stats": dict,          # 전체 강한 종목의 D1~D5 통계
         }
     """
+    # search_themes: 종목별 빈도 집계 시 core_theme 필터용
+    # (빈 리스트/None이면 필터 없이 전체 포함 - 하위 호환)
+    theme_set = set(t for t in (search_themes or []) if t)
+
     # 1. rise_rate가 채워진 사례 필터
     cases_with_data = [c for c in similar_cases if c.get("rise_rate") is not None]
 
@@ -310,11 +315,18 @@ def run_step_c_theme(
     )
 
     # 4. 종목별 집계 (strong 기준)
+    # search_themes 지정 시: 해당 케이스의 core_theme이 검색 테마와 일치하는 것만 집계
+    # → all_themes 부분 매칭으로 딸려온 타 테마 종목 노이즈 제거
     stock_map: dict[str, list[dict]] = {}
     for c in strong_cases:
         name = c.get("stock_name", "")
-        if name:
-            stock_map.setdefault(name, []).append(c)
+        if not name:
+            continue
+        if theme_set:
+            case_core = c.get("core_theme") or ""
+            if case_core not in theme_set:
+                continue  # 타 테마 종목 제외
+        stock_map.setdefault(name, []).append(c)
 
     # 5. 종목별 D+1~D+5 평균 수익 계산
     stock_summaries = []

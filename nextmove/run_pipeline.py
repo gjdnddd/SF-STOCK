@@ -236,6 +236,7 @@ def pipeline_theme(
     print("\n[Step C] 강한 종목 필터링 + 통계 산출...")
     c_result = run_step_c_theme(
         similar_cases=b_result["similar_cases"],
+        search_themes=list(set([b_result["core_theme"]] + b_result["themes"])),
         strong_threshold=strong_threshold,
     )
     print(f"  → 강한 종목 사례: {c_result['strong_count']}건 "
