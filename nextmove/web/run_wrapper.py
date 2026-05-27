@@ -31,6 +31,7 @@ if mode == "individual":
         skip_filter=False,
         chart_filter=args.get("chart_filter", False),
         json_output=False,
+        override_theme=args.get("override_theme", ""),
     )
 else:
     pipeline_theme(

@@ -299,8 +299,9 @@ def pipeline():
             "chart_filter": use_chart,
         }
         if mode == "individual":
-            args["stock_name"] = request.form.get("stock_name", "")
-            args["stock_code"] = request.form.get("stock_code", "")
+            args["stock_name"]     = request.form.get("stock_name", "")
+            args["stock_code"]     = request.form.get("stock_code", "")
+            args["override_theme"] = request.form.get("override_theme", "")
         else:
             args["core_theme"] = request.form.get("core_theme", "")
             args["themes"]     = request.form.get("themes", "")
@@ -311,7 +312,7 @@ def pipeline():
         try:
             # ── 1. VM에 인자 JSON 업로드 (한글 인코딩 문제 우회) ─────────────
             scp = subprocess.run(
-                ["gcloud", "compute", "scp", str(tmp_json),
+                ["gcloud.cmd", "compute", "scp", str(tmp_json),
                  f"{VM_NAME}:/tmp/nm_web_args.json", f"--zone={VM_ZONE}"],
                 capture_output=True, timeout=30,
             )
@@ -325,7 +326,7 @@ def pipeline():
                 f"python3 web/run_wrapper.py"
             )
             ssh = subprocess.run(
-                ["gcloud", "compute", "ssh", VM_NAME,
+                ["gcloud.cmd", "compute", "ssh", VM_NAME,
                  f"--zone={VM_ZONE}",
                  f"--command=sudo -H -u {VM_USER} bash -c '{inner}'"],
                 capture_output=True, timeout=120,

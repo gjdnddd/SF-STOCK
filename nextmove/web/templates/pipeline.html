@@ -49,6 +49,12 @@
                  value="{{ request.form.get('stock_code', '') }}">
         </div>
       </div>
+      <div class="form-group">
+        <label for="override_theme">테마 직접 지정 <small style="color:#888">(선택 — 비워두면 DB 자동 조회)</small></label>
+        <input type="text" id="override_theme" name="override_theme"
+               placeholder="예: 마이크론  (DB 자동 조회 대신 이 테마로 분석)"
+               value="{{ request.form.get('override_theme', '') }}">
+      </div>
     </div>
 
     <div id="theme-fields" style="display:none">

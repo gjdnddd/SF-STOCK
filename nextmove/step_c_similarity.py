@@ -317,15 +317,20 @@ def run_step_c_theme(
     # 4. 종목별 집계 (strong 기준)
     # search_themes 지정 시: 해당 케이스의 core_theme이 검색 테마와 일치하는 것만 집계
     # → all_themes 부분 매칭으로 딸려온 타 테마 종목 노이즈 제거
+    # smart fallback: pure 테마 종목이 5건 미만이면 필터 해제
+    # (미국 기업 테마 등 core_theme 매칭 종목이 없는 경우 빈 결과 방지)
+    pure_count = sum(1 for c in strong_cases if (c.get("core_theme") or "") in theme_set)
+    use_strict_filter = bool(theme_set) and pure_count >= 5
+
     stock_map: dict[str, list[dict]] = {}
     for c in strong_cases:
         name = c.get("stock_name", "")
         if not name:
             continue
-        if theme_set:
+        if use_strict_filter:
             case_core = c.get("core_theme") or ""
             if case_core not in theme_set:
-                continue  # 타 테마 종목 제외
+                continue  # 타 테마 종목 제외 (순수 테마 종목 충분할 때만)
         stock_map.setdefault(name, []).append(c)
 
     # 5. 종목별 D+1~D+5 평균 수익 계산

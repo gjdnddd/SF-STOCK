@@ -75,6 +75,7 @@ def pipeline_individual(
     skip_filter: bool = False,
     chart_filter: bool = False,
     json_output: bool = False,
+    override_theme: str = "",
 ) -> dict:
     """
     개별 종목 기사 분석 파이프라인.
@@ -98,6 +99,20 @@ def pipeline_individual(
     print(f"[NextMove] 개별 종목 분석: {stock_name}")
     print(f"  기사: {title[:60]}{'...' if len(title)>60 else ''}")
     print(f"{'='*65}")
+
+    # ── override_theme 지정 시 테마 분석으로 전환 ─────────────────
+    if override_theme:
+        print(f"\n[테마 전환] 지정 테마: {override_theme}")
+        return pipeline_theme(
+            core_theme=override_theme,
+            themes_raw=override_theme,
+            title=title,
+            body=body,
+            project_id=project_id,
+            skip_filter=True,
+            chart_filter=chart_filter,
+            json_output=json_output,
+        )
 
     step_a_result = None
 
@@ -399,6 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ind.add_argument("--body", default="", help="기사 본문 (선택)")
     p_ind.add_argument("--skip-filter", action="store_true", help="Step A 건너뜀")
     p_ind.add_argument("--chart-filter", action="store_true", help="Step E 차트 위치 확인")
+    p_ind.add_argument("--override-theme", default="", help="테마 직접 지정 (DB 자동 조회 대신 이 테마로 분석)")
     p_ind.add_argument("--json", action="store_true", help="JSON 출력")
     p_ind.add_argument("--project", default="infin-stock-bot")
 
@@ -435,6 +451,7 @@ def main() -> None:
             skip_filter=args.skip_filter,
             chart_filter=getattr(args, "chart_filter", False),
             json_output=args.json,
+            override_theme=args.override_theme,
         )
 
     elif mode in ("theme", "th", "t"):
