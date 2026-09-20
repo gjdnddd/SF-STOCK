@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주식 통합 분석 시스템</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside id="sidebar">
+  <h2>💎 주식 분석</h2>
+  <nav id="nav">
+    <button type="button" class="nav-btn active" data-menu="filter">🔎 테마 필터</button>
+    <button type="button" class="nav-btn" data-menu="detail">📈 종목 상세 분석</button>
+  </nav>
+  <p id="built"></p>
+</aside>
+
+<main>
+  <div id="fatal" class="notice error" hidden></div>
+
+  <section id="view-filter">
+    <h1>🔎 테마 상세 필터</h1>
+    <div class="row">
+      <div class="field grow">
+        <label>검색 범위</label>
+        <div id="scope-chips" class="chips"></div>
+      </div>
+      <div class="field">
+        <label>검색 방식</label>
+        <div class="radios">
+          <label><input type="radio" name="mode" value="contains" checked> 포함</label>
+          <label><input type="radio" name="mode" value="exact"> 완전 일치</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="q">검색어</label>
+      <input id="q" type="text" autocomplete="off" placeholder="테마 키워드 또는 초성 (예: ㄹㅂ)">
+    </div>
+
+    <div id="kw-wrap" class="field" hidden>
+      <label for="kw">확정 검색어 선택</label>
+      <select id="kw"></select>
+    </div>
+
+    <p id="status" class="status"></p>
+
+    <div id="results" hidden>
+      <hr>
+      <div class="row">
+        <div class="field grow">
+          <label for="target">상세 정보를 볼 종목 선택</label>
+          <select id="target"></select>
+        </div>
+        <div class="field btn-field">
+          <button type="button" id="go-detail" class="primary">📈 상세페이지 이동</button>
+        </div>
+      </div>
+      <p id="empty" class="notice" hidden>검색 결과가 없습니다.</p>
+      <div class="table-wrap">
+        <table id="tbl">
+          <thead><tr><th>종목명</th><th>코어테마</th><th>전체테마</th><th>대장이력</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-detail" hidden>
+    <h1>📈 종목 상세 분석</h1>
+    <button type="button" id="back">⬅️ 필터화면으로 돌아가기</button>
+    <div class="field">
+      <label for="stock-select">종목 선택</label>
+      <select id="stock-select"></select>
+    </div>
+    <h2 id="report-title"></h2>
+    <div id="tabs" class="tabs" role="tablist"></div>
+    <div id="tab-content" class="content-box"></div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
