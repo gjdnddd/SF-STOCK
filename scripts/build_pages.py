@@ -68,9 +68,8 @@ def main() -> None:
     if len(df) < MIN_ROWS:
         sys.exit(f"[build_pages] 행이 너무 적음({len(df)}) — 잘못된 파일로 보고 중단")
 
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    shutil.copytree(PAGES, OUT)
+    shutil.rmtree(OUT, ignore_errors=True)  # OneDrive 동기화 폴더에서 폴더 삭제가 막히는 경우 대비
+    shutil.copytree(PAGES, OUT, dirs_exist_ok=True)
     data_dir = OUT / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 

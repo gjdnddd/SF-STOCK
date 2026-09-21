@@ -64,6 +64,27 @@ input[type="text"], select {
 }
 input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); background: #fff; }
 
+.combo { position: relative; }
+#stock-list {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  max-height: 320px;
+  overflow-y: auto;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+#stock-list li { padding: 7px 12px; cursor: pointer; }
+#stock-list li.active, #stock-list li:hover { background: var(--field); }
+#stock-list li.more { color: var(--muted); font-size: 13px; cursor: default; }
+#stock-list li.more:hover { background: transparent; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips label {
   display: inline-flex;

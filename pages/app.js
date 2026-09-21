@@ -84,9 +84,10 @@
     return false;
   }
 
+  // "SMR10-8" -> [10, 8]. 대소문자 무시, '-' 뒤 숫자가 없으면 0.
   function sortKey(core, keyword) {
-    const m = core.replace(/ /g, '').match(new RegExp(escapeRegExp(keyword) + '(\\d+)'));
-    return m ? parseInt(m[1], 10) : 0;
+    const m = core.replace(/ /g, '').match(new RegExp(escapeRegExp(keyword) + '(\\d+)(?:-(\\d+))?', 'i'));
+    return m ? [parseInt(m[1], 10), parseInt(m[2] || '0', 10)] : [0, 0];
   }
 
   function setStatus(msg) {
@@ -165,7 +166,7 @@
       }
     }
     const keyed = hits.map((i) => [i, sortKey(light.core[i], kw)]);
-    keyed.sort((a, b) => b[1] - a[1]);
+    keyed.sort((a, b) => b[1][0] - a[1][0] || b[1][1] - a[1][1]);
     renderResults(keyed.map((k) => k[0]));
     setStatus('');
   }
@@ -193,11 +194,100 @@
   }
 
   // ---- 종목 상세 ----
+  const MAX_COMBO_ITEMS = 100;
+  const combo = { items: [], active: -1 };
+
+  function matchStocks(query) {
+    const q = query.trim();
+    if (!q) return light.names;
+    const ql = q.toLowerCase();
+    if ([...q].every((ch) => CHO_SET.has(ch))) return light.names.filter((n) => chosung(n).includes(q));
+    const hits = light.names.filter((n) => n.toLowerCase().includes(ql));
+    return hits.sort((a, b) => Number(!a.toLowerCase().startsWith(ql)) - Number(!b.toLowerCase().startsWith(ql)));
+  }
+
+  function setComboActive(i) {
+    const lis = $('stock-list').querySelectorAll('li[data-i]');
+    if (!lis.length) return;
+    combo.active = (i + lis.length) % lis.length;
+    lis.forEach((li, k) => li.classList.toggle('active', k === combo.active));
+    lis[combo.active].scrollIntoView({ block: 'nearest' });
+  }
+
+  function openCombo(query) {
+    const hits = matchStocks(query);
+    combo.items = hits.slice(0, MAX_COMBO_ITEMS);
+    combo.active = combo.items.length ? 0 : -1;
+    const frag = document.createDocumentFragment();
+    combo.items.forEach((name, i) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.dataset.i = i;
+      li.textContent = name;
+      li.classList.toggle('active', i === 0);
+      frag.appendChild(li);
+    });
+    const note = hits.length === 0 ? '일치하는 종목이 없습니다' : hits.length > MAX_COMBO_ITEMS ? `외 ${hits.length - MAX_COMBO_ITEMS}개 — 더 입력해서 좁혀보세요` : '';
+    if (note) {
+      const li = document.createElement('li');
+      li.className = 'more';
+      li.textContent = note;
+      frag.appendChild(li);
+    }
+    $('stock-list').replaceChildren(frag);
+    $('stock-list').hidden = false;
+    $('stock-input').setAttribute('aria-expanded', 'true');
+  }
+
+  function closeCombo() {
+    $('stock-list').hidden = true;
+    $('stock-input').setAttribute('aria-expanded', 'false');
+  }
+
+  function chooseStock(name) {
+    state.selectedStock = name;
+    closeCombo();
+    renderDetail();
+  }
+
+  function bindCombo() {
+    const input = $('stock-input');
+    input.addEventListener('focus', () => {
+      input.select();
+      openCombo('');
+    });
+    input.addEventListener('click', () => {
+      if ($('stock-list').hidden) openCombo('');
+    });
+    input.addEventListener('input', () => openCombo(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if ($('stock-list').hidden) openCombo(input.value === state.selectedStock ? '' : input.value);
+        else setComboActive(combo.active + (e.key === 'ArrowDown' ? 1 : -1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!$('stock-list').hidden && combo.active >= 0) chooseStock(combo.items[combo.active]);
+      } else if (e.key === 'Escape') {
+        closeCombo();
+        input.value = state.selectedStock;
+      }
+    });
+    input.addEventListener('blur', () => {
+      closeCombo();
+      input.value = state.selectedStock;
+    });
+    $('stock-list').addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const li = e.target.closest('li[data-i]');
+      if (li) chooseStock(combo.items[Number(li.dataset.i)]);
+    });
+  }
+
   function renderDetail() {
-    const sel = $('stock-select');
-    if (sel.options.length === 0) fillSelect(sel, light.names);
     if (!indexOf.has(state.selectedStock)) state.selectedStock = light.names[0];
-    sel.value = state.selectedStock;
+    $('stock-input').value = state.selectedStock;
     $('report-title').textContent = `🔍 ${state.selectedStock} 분석 리포트`;
     renderTabs();
     renderTabContent();
@@ -277,10 +367,7 @@
       if (state.selectedStock) showMenu('detail');
     });
     $('back').addEventListener('click', () => showMenu('filter'));
-    $('stock-select').addEventListener('change', (e) => {
-      state.selectedStock = e.target.value;
-      renderDetail();
-    });
+    bindCombo();
   }
 
   async function init() {

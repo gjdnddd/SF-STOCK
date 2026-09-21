@@ -71,9 +71,11 @@
   <section id="view-detail" hidden>
     <h1>📈 종목 상세 분석</h1>
     <button type="button" id="back">⬅️ 필터화면으로 돌아가기</button>
-    <div class="field">
-      <label for="stock-select">종목 선택</label>
-      <select id="stock-select"></select>
+    <div class="field combo">
+      <label for="stock-input">종목 선택</label>
+      <input id="stock-input" type="text" autocomplete="off" placeholder="종목명 또는 초성 검색 (예: ㅅㅅㅈㅈ)"
+             role="combobox" aria-expanded="false" aria-controls="stock-list" aria-autocomplete="list">
+      <ul id="stock-list" role="listbox" hidden></ul>
     </div>
     <h2 id="report-title"></h2>
     <div id="tabs" class="tabs" role="tablist"></div>
